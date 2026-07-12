@@ -1,0 +1,30 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t tube-tracker:ci ./app
+
+      - name: Smoke test container starts and responds
+        run: |
+          docker run -d --name tube-tracker-ci -p 8000:8000 tube-tracker:ci
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:8000/health; then
+              echo "health check passed"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "health check failed"
+          docker logs tube-tracker-ci
+          exit 1

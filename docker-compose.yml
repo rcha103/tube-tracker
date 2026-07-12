@@ -1,0 +1,9 @@
+services:
+  tube-tracker:
+    build: ./app
+    container_name: tube-tracker
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8000"
+    volumes:
+      - ./data:/app/data

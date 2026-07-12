@@ -1,0 +1,2257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tube Tracker</title>
+<link rel="icon" id="favicon-link" href="data:," />
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+<style>
+  :root{
+    --bg:#0d1013;
+    --panel:#15191d;
+    --panel-2:#1c2126;
+    --line:#282e35;
+    --text:#e9edf1;
+    --text-dim:#8b96a3;
+    --accent:#dc241f; /* roundel red */
+    --accent-2:#0019a8; /* roundel blue */
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    display:flex;
+    flex-direction:column;
+  }
+  header{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:14px 18px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+    flex-shrink:0;
+  }
+  #logo-container{
+    width:34px;height:34px;
+    flex-shrink:0;
+    cursor:pointer;
+    position:relative;
+    border-radius:50%;
+    overflow:hidden;
+  }
+  #logo-container:hover::before{
+    content:"✎";
+    position:absolute;
+    inset:0;
+    background:rgba(0,0,0,0.5);
+    color:#fff;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    border-radius:50%;
+  }
+  #city-logo{width:100%;height:100%;object-fit:contain;}
+  .roundel{
+    width:34px;height:34px;border-radius:50%;
+    border:5px solid var(--accent);
+    background:transparent;
+    position:relative;
+    flex-shrink:0;
+  }
+  .roundel::after{
+    content:"";
+    position:absolute;
+    left:-2px;right:-2px;top:50%;
+    height:6px;
+    margin-top:-3px;
+    background:var(--accent-2);
+  }
+  .app-title{
+    font-size:16px;
+    font-weight:600;
+    letter-spacing:0.2px;
+  }
+  #edit-title-btn{
+    background:none;
+    border:none;
+    color:var(--text-dim);
+    font-size:11px;
+    cursor:pointer;
+    margin-left:4px;
+    padding:2px;
+  }
+  #edit-title-btn:hover{color:var(--text);}
+  header h1{
+    font-size:16px;
+    font-weight:600;
+    margin:0;
+    letter-spacing:0.2px;
+  }
+  header .sub{
+    color:var(--text-dim);
+    font-size:12px;
+  }
+  header .overall{
+    margin-left:auto;
+    text-align:right;
+  }
+  header .overall .num{
+    font-size:20px;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+  }
+  header .overall .lbl{
+    font-size:11px;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+  }
+  .layout{
+    flex:1;
+    display:flex;
+    min-height:0;
+    position:relative;
+  }
+  #map{
+    flex:1;
+    background:#0a0c0e;
+  }
+  aside{
+    width:300px;
+    flex-shrink:0;
+    background:var(--panel);
+    border-left:1px solid var(--line);
+    overflow-y:auto;
+    padding:14px;
+  }
+  aside h2{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.8px;
+    color:var(--text-dim);
+    margin:0 0 10px 0;
+  }
+  .line-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 0;
+    cursor:pointer;
+    border-radius:6px;
+  }
+  .line-row:hover{background:var(--panel-2);}
+  .line-row .chip{
+    width:10px;height:10px;border-radius:50%;flex-shrink:0;
+  }
+  .line-row .name{
+    flex:1;
+    font-size:12.5px;
+  }
+  .line-row .count{
+    font-size:11px;
+    color:var(--text-dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .line-row.dimmed{opacity:0.35;}
+  .progress-track{
+    height:4px;
+    background:var(--line);
+    border-radius:2px;
+    margin-top:4px;
+    overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;
+    background:var(--text);
+  }
+  #station-panel{
+    position:absolute;
+    bottom:16px;
+    left:16px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:12px 14px;
+    min-width:220px;
+    display:none;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    z-index:900;
+  }
+  #station-panel.visible{display:block;}
+  #tile-warning{
+    display:none;
+    position:absolute;
+    top:12px;left:50%;transform:translateX(-50%);
+    background:#3a1f1f;
+    border:1px solid #6b2f2f;
+    color:#f0c9c9;
+    font-size:12px;
+    padding:8px 14px;
+    border-radius:8px;
+    z-index:1000;
+    max-width:80%;
+    text-align:center;
+  }
+  #tile-warning.visible{display:block;}
+  #station-panel .sname{font-weight:600;font-size:14px;margin-bottom:4px;}
+  #station-panel .slines{font-size:11px;color:var(--text-dim);margin-bottom:10px;}
+  #station-panel button{
+    width:100%;
+    padding:8px 10px;
+    border-radius:6px;
+    border:none;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  #station-panel button.mark{background:var(--text);color:var(--bg);}
+  #station-panel button.unmark{background:var(--panel-2);color:var(--text);border:1px solid var(--line);}
+  #station-panel button:disabled{opacity:0.35;cursor:default;}
+  #sp-delete-pin-btn{
+    margin-top:6px;
+    background:none !important;
+    border:none;
+    color:#e08a8a;
+    font-size:11px;
+    text-decoration:underline;
+    padding:2px 0;
+  }
+  .leaflet-container{background:#0a0c0e;}
+  .leaflet-control-layers{
+    background:var(--panel) !important;
+    color:var(--text) !important;
+    border:1px solid var(--line) !important;
+    border-radius:8px !important;
+  }
+  .leaflet-control-layers-expanded{padding:8px 10px !important;}
+  .leaflet-control-layers label{font-size:12px;}
+  .leaflet-bar a{
+    background:var(--panel) !important;
+    color:var(--text) !important;
+    border-color:var(--line) !important;
+  }
+  ::-webkit-scrollbar{width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+
+  .view-toggle{
+    display:flex;
+    background:var(--panel-2);
+    border-radius:8px;
+    padding:3px;
+    gap:2px;
+  }
+
+  #city-select{
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:6px 10px;
+    font-size:12px;
+    font-weight:600;
+  }
+  #manage-stations-btn, #manage-lines-btn{
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:6px 10px;
+    font-size:12px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+
+  .manage-panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    width:min(1000px, 92vw);
+    height:min(720px, 88vh);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .manage-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 16px;
+    border-bottom:1px solid var(--line);
+  }
+  .manage-header h3{margin:0;font-size:14px;}
+  .manage-toolbar{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    padding:10px 16px;
+    border-bottom:1px solid var(--line);
+    flex-wrap:wrap;
+  }
+  .manage-toolbar input[type="text"]{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:7px 10px;
+    border-radius:6px;
+    font-size:12px;
+    flex:1;
+    min-width:140px;
+  }
+  .manage-toolbar button{
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:7px 12px;
+    font-size:12px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  #manage-add-btn{background:var(--text);color:var(--bg);border:none;}
+  #manage-import-status{font-size:11px;color:var(--text-dim);}
+  .manage-table-wrap{flex:1;overflow:auto;padding:0 16px 16px;}
+  .manage-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .manage-table th{
+    text-align:left;
+    position:sticky;top:0;
+    background:var(--panel);
+    padding:8px 6px;
+    border-bottom:1px solid var(--line);
+    color:var(--text-dim);
+    font-weight:600;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+  }
+  .manage-table td{
+    padding:7px 6px;
+    border-bottom:1px solid var(--line);
+    vertical-align:top;
+  }
+  .manage-table .line-tag{
+    display:inline-block;
+    padding:2px 7px;
+    border-radius:10px;
+    font-size:10.5px;
+    font-weight:600;
+    color:#fff;
+    margin:1px 2px 1px 0;
+  }
+  .manage-table .row-actions button{
+    background:none;
+    border:none;
+    color:var(--text-dim);
+    cursor:pointer;
+    font-size:12px;
+    padding:2px 4px;
+  }
+  .manage-table .row-actions button:hover{color:var(--text);}
+  .view-btn{
+    background:transparent;
+    border:none;
+    color:var(--text-dim);
+    font-size:12px;
+    font-weight:600;
+    padding:6px 12px;
+    border-radius:6px;
+    cursor:pointer;
+    position:relative;
+  }
+  .view-btn .badge{
+    display:inline-block;
+    margin-left:5px;
+    background:var(--accent);
+    color:#fff;
+    font-size:10px;
+    font-weight:700;
+    border-radius:8px;
+    padding:1px 5px;
+    vertical-align:middle;
+  }
+
+  #needs-pins-btn{
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:5px 10px;
+    font-size:11px;
+    cursor:pointer;
+    position:relative;
+  }
+  #needs-pins-btn .badge{
+    background:var(--accent);
+    color:#fff;
+    font-size:10px;
+    font-weight:700;
+    border-radius:8px;
+    padding:1px 5px;
+    margin-left:4px;
+  }
+  #needs-pins-dropdown{
+    position:absolute;
+    top:36px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    width:240px;
+    max-height:260px;
+    overflow-y:auto;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    z-index:100;
+    display:none;
+  }
+  #needs-pins-dropdown.visible{display:block;}
+  #needs-pins-dropdown .np-row{
+    padding:8px 12px;
+    font-size:12px;
+    cursor:pointer;
+    border-bottom:1px solid var(--line);
+  }
+  #needs-pins-dropdown .np-row:last-child{border-bottom:none;}
+  #needs-pins-dropdown .np-row:hover{background:var(--panel-2);}
+  #needs-pins-dropdown .np-empty{padding:14px 12px;font-size:12px;color:var(--text-dim);}
+
+  #calibration-banner{
+    display:none;
+    align-items:center;
+    gap:8px;
+    background:var(--accent);
+    color:#fff;
+    padding:5px 10px;
+    border-radius:6px;
+    font-size:11px;
+    font-weight:600;
+    flex-wrap:wrap;
+  }
+  #calibration-banner.visible{display:flex;}
+  #calibration-banner button{
+    background:rgba(255,255,255,0.2);
+    border:none;
+    color:#fff;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  #calibration-cancel-btn{width:18px;height:18px;line-height:1;}
+  #calibration-line-chips{display:none;align-items:center;gap:5px;flex-wrap:wrap;}
+  #calibration-line-chips .line-chip{border:2px solid transparent;}
+  #calibration-line-chips .line-chip.selected{border-color:#fff;}
+  #calibration-line-chips button{padding:4px 10px;font-weight:600;font-size:11px;}
+  #calibration-line-chips button:disabled{opacity:0.4;cursor:not-allowed;}
+  .view-btn.active{
+    background:var(--line);
+    color:var(--text);
+  }
+
+  #diagram-view{
+    flex:1;
+    display:none;
+    position:relative;
+    overflow:hidden;
+    background:#0a0c0e;
+  }
+  #diagram-view.visible{display:block;}
+  #map.hidden{display:none;}
+
+  #diagram-scroll{
+    position:absolute;
+    top:41px; left:0; right:0; bottom:0;
+    overflow:auto;
+  }
+
+  #diagram-empty{
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+    color:var(--text-dim);
+    padding:24px;
+    text-align:center;
+  }
+  #diagram-empty .hint{
+    font-size:12px;
+    max-width:420px;
+    line-height:1.5;
+  }
+  #diagram-upload-btn{
+    background:var(--text);
+    color:var(--bg);
+    border:none;
+    padding:10px 18px;
+    border-radius:8px;
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+  }
+
+  #diagram-canvas{
+    position:relative;
+    display:inline-block;
+    cursor:grab;
+    touch-action:none;
+  }
+  #diagram-canvas.dragging{cursor:grabbing;}
+  #diagram-canvas img{
+    display:block;
+    max-width:none;
+    user-select:none;
+    -webkit-user-drag:none;
+  }
+  .diagram-pin{
+    position:absolute;
+    border-radius:50%;
+    border:3px solid #fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.5);
+    cursor:pointer;
+  }
+  .diagram-pin.unvisited{opacity:0.55;}
+
+  #pin-size-control{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:11px;
+    color:var(--text-dim);
+  }
+  #pin-size-control input[type="range"]{
+    width:80px;
+    accent-color:var(--text);
+  }
+
+  #diagram-zoom-controls{
+    display:flex;
+    gap:4px;
+    margin-left:auto;
+  }
+  #diagram-zoom-controls button{
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:6px;
+    width:26px;height:26px;
+    font-size:14px;
+    cursor:pointer;
+  }
+
+  #diagram-toolbar{
+    position:absolute;
+    top:0; left:0; right:0;
+    height:41px;
+    box-sizing:border-box;
+    z-index:50;
+    display:flex;
+    gap:8px;
+    padding:8px 10px;
+    background:rgba(21,25,29,0.95);
+    backdrop-filter:blur(4px);
+    border-bottom:1px solid var(--line);
+    font-size:11px;
+    color:var(--text-dim);
+    align-items:center;
+  }
+  #diagram-toolbar button{
+    background:var(--panel-2);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:5px 10px;
+    font-size:11px;
+    cursor:pointer;
+  }
+
+  #add-pin-handle, #free-marker-handle, #add-station-handle{
+    display:flex;
+    align-items:center;
+    gap:5px;
+    background:var(--text);
+    color:var(--bg);
+    border:none;
+    border-radius:14px;
+    padding:5px 12px;
+    font-size:11px;
+    font-weight:600;
+    cursor:grab;
+    touch-action:none;
+    user-select:none;
+  }
+  #add-pin-handle:active, #free-marker-handle:active, #add-station-handle:active{cursor:grabbing;}
+  #add-station-handle{
+    position:absolute;
+    bottom:16px;
+    right:16px;
+    z-index:900;
+  }
+  #add-station-handle .dot{background:#2ecc71;}
+  #add-pin-handle .dot, #free-marker-handle .dot, #add-station-handle .dot{
+    width:9px;height:9px;
+    border-radius:50%;
+    background:var(--accent);
+    border:2px solid #fff;
+    flex-shrink:0;
+  }
+  #free-marker-handle .dot{background:#8a5cf6;}
+
+  .autocomplete-dropdown{
+    position:absolute;
+    top:calc(100% + 2px);
+    left:0;right:0;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    max-height:160px;
+    overflow-y:auto;
+    z-index:500;
+    display:none;
+    box-shadow:0 8px 20px rgba(0,0,0,0.4);
+  }
+  .autocomplete-dropdown.visible{display:block;}
+  .autocomplete-row{
+    padding:7px 10px;
+    font-size:12.5px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:7px;
+  }
+  .autocomplete-row:hover, .autocomplete-row.active{background:var(--panel-2);}
+  .autocomplete-row .ac-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+  .color-picker{margin-bottom:12px;}
+  .cp-swatches{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-bottom:8px;
+    max-height:90px;
+    overflow-y:auto;
+  }
+  .cp-swatch{
+    width:22px;height:22px;
+    border-radius:50%;
+    cursor:pointer;
+    border:2px solid transparent;
+    flex-shrink:0;
+  }
+  .cp-swatch.selected{border-color:#fff;box-shadow:0 0 0 1px var(--accent);}
+  .cp-row{display:flex;gap:8px;align-items:center;}
+  .cp-native{
+    width:36px;height:32px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:none;
+    padding:2px;
+    cursor:pointer;
+  }
+  .cp-hex{
+    flex:1;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:7px 10px;
+    border-radius:6px;
+    font-size:12.5px;
+    font-family:monospace;
+  }
+
+  .pin-ghost{
+    position:fixed;
+    width:28px;height:28px;
+    margin-left:-14px;margin-top:-14px;
+    border-radius:50%;
+    background:var(--accent);
+    border:3px solid #fff;
+    box-shadow:0 4px 12px rgba(0,0,0,0.5);
+    pointer-events:none;
+    z-index:3000;
+  }
+
+  .modal-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.6);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:2000;
+  }
+  .modal-backdrop.visible{display:flex;}
+  .modal{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px;
+    width:340px;
+    max-width:90vw;
+  }
+  .modal h3{margin:0 0 4px 0;font-size:14px;}
+  .modal .modal-sub{font-size:11px;color:var(--text-dim);margin-bottom:12px;}
+  .modal input[type="text"]{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:8px 10px;
+    border-radius:6px;
+    font-size:13px;
+    margin-bottom:8px;
+  }
+  .modal-station-list{
+    max-height:160px;
+    overflow-y:auto;
+    border:1px solid var(--line);
+    border-radius:6px;
+    margin-bottom:12px;
+  }
+  .modal-station-row{
+    padding:7px 10px;
+    font-size:12.5px;
+    cursor:pointer;
+  }
+  .modal-station-row:hover, .modal-station-row.selected{background:var(--panel-2);}
+  .modal-line-chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-bottom:14px;
+  }
+  .line-chip{
+    padding:5px 10px;
+    border-radius:14px;
+    font-size:11.5px;
+    font-weight:600;
+    cursor:pointer;
+    border:2px solid transparent;
+    color:#fff;
+  }
+  .line-chip.selected{border-color:#fff;}
+  .modal-actions{display:flex;gap:8px;}
+  .modal-actions button{
+    flex:1;
+    padding:9px;
+    border-radius:6px;
+    border:none;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .modal-actions .cancel{background:var(--panel-2);color:var(--text);border:1px solid var(--line);}
+  .modal-actions .confirm{background:var(--text);color:var(--bg);}
+  .modal-actions .confirm:disabled{opacity:0.4;cursor:not-allowed;}
+</style>
+</head>
+<body>
+
+<header>
+  <div id="logo-container" title="Click to upload/change this city's logo">
+    <img id="city-logo" alt="" style="display:none" />
+    <div id="logo-placeholder" class="roundel"></div>
+  </div>
+  <input type="file" id="logo-file-input" accept="image/png,image/webp,image/jpeg" style="display:none" />
+  <div>
+    <span id="app-title-text" class="app-title">Tube Tracker</span>
+    <button id="edit-title-btn" title="Edit this city's display name">✎</button>
+    <div class="sub">click a station to mark it visited</div>
+  </div>
+  <select id="city-select"></select>
+  <button id="manage-stations-btn" title="View, add, edit, import/export stations">Manage stations</button>
+  <button id="manage-lines-btn" title="View, add, edit lines and colours">Manage lines</button>
+  <div class="view-toggle">
+    <button class="view-btn active" id="btn-view-map" data-view="map">Real map</button>
+    <button class="view-btn" id="btn-view-diagram" data-view="diagram">Diagram<span class="badge" id="diagram-badge" style="display:none"></span></button>
+  </div>
+  <div class="overall">
+    <div class="num" id="overall-num">0 / 0</div>
+    <div class="lbl">stations visited</div>
+  </div>
+</header>
+
+<div class="layout">
+  <div id="map"></div>
+  <div id="add-station-handle" title="Drag onto the map to add a new station at that location"><span class="dot"></span>Add station</div>
+  <div id="tile-warning">Map tiles failed to load for this layer — try switching layers (top-right) or check your network/DNS filtering. Stations below still work even with a dark background.</div>
+  <div id="station-panel">
+    <div class="sname" id="sp-name"></div>
+    <div class="slines" id="sp-lines"></div>
+    <div class="modal-line-chips" id="sp-line-chips"></div>
+    <button id="sp-btn"></button>
+    <button id="sp-delete-pin-btn" style="display:none">Delete this pin</button>
+  </div>
+  <div id="diagram-view">
+    <div id="diagram-empty">
+      <div>
+        <strong>No diagram uploaded yet</strong>
+        <div class="hint">Upload your own copy of the official map — for personal reference only, from an image you already have rights to view. We never supply or bundle this ourselves.</div>
+      </div>
+      <input type="file" id="diagram-file-input" accept="image/png,image/jpeg,image/webp" style="display:none" />
+      <button id="diagram-upload-btn">Upload map image</button>
+    </div>
+  </div>
+  <aside>
+    <h2>Lines</h2>
+    <div id="line-list"></div>
+  </aside>
+</div>
+
+<div class="modal-backdrop" id="pin-modal-backdrop">
+  <div class="modal">
+    <h3 id="pin-modal-title">Which station is this?</h3>
+    <div class="modal-sub">Search and select, then pick the line you rode.</div>
+    <input type="text" id="pin-station-search" placeholder="Search stations…" />
+    <div class="modal-station-list" id="pin-station-list"></div>
+    <div class="modal-line-chips" id="pin-line-chips"></div>
+    <div class="modal-actions">
+      <button class="cancel" id="pin-modal-cancel">Cancel</button>
+      <button class="confirm" id="pin-modal-confirm" disabled>Mark visited</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="manage-backdrop">
+  <div class="manage-panel">
+    <div class="manage-header">
+      <h3>Manage stations — <span id="manage-city-name"></span></h3>
+      <button class="cancel" id="manage-close-btn">Close</button>
+    </div>
+    <div class="manage-toolbar">
+      <input type="text" id="manage-search" placeholder="Filter by name…" />
+      <button id="manage-add-btn">+ Add station</button>
+      <button id="manage-export-json-btn">Export JSON</button>
+      <button id="manage-export-xlsx-btn">Export Excel</button>
+      <button id="manage-import-btn">Import file…</button>
+      <input type="file" id="manage-import-input" accept=".json,.xlsx" style="display:none" />
+      <span id="manage-import-status"></span>
+    </div>
+    <div class="manage-table-wrap">
+      <table class="manage-table">
+        <thead>
+          <tr><th>Name</th><th>Lines</th><th>Zone</th><th>Lat</th><th>Lon</th><th></th></tr>
+        </thead>
+        <tbody id="manage-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="station-edit-backdrop">
+  <div class="modal">
+    <h3 id="station-edit-title">Add station</h3>
+    <input type="text" id="se-name" placeholder="Station name" />
+    <div style="position:relative;">
+      <input type="text" id="se-lines" placeholder="Lines, comma separated (e.g. U1, U2)" autocomplete="off" />
+      <div id="se-lines-suggestions" class="autocomplete-dropdown"></div>
+    </div>
+    <input type="text" id="se-zone" placeholder="Zone (optional)" />
+    <input type="text" id="se-lat" placeholder="Latitude (optional)" />
+    <input type="text" id="se-lon" placeholder="Longitude (optional)" />
+    <div class="modal-actions">
+      <button class="cancel" id="se-cancel-btn">Cancel</button>
+      <button class="confirm" id="se-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="city-add-backdrop">
+  <div class="modal">
+    <h3>Add a city</h3>
+    <div class="modal-sub">Starts empty — add stations manually or import a file afterwards.</div>
+    <input type="text" id="ca-name" placeholder="City name (e.g. Berlin)" />
+    <div class="modal-actions">
+      <button class="cancel" id="ca-cancel-btn">Cancel</button>
+      <button class="confirm" id="ca-save-btn">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="free-marker-backdrop">
+  <div class="modal">
+    <h3>Add a free marker</h3>
+    <div class="modal-sub">For things on the map that aren't part of the network — Uber Boat piers, cable car, anything else.</div>
+    <input type="text" id="fm-name" placeholder="Name (e.g. Woolwich Arsenal Pier)" />
+    <div class="modal-sub" style="margin-top:8px;margin-bottom:4px;">Colour</div>
+    <select id="fm-line-select" style="width:100%;margin-bottom:8px;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:12.5px;">
+      <option value="__new__">+ New category / colour…</option>
+    </select>
+    <div id="fm-new-line-fields" style="display:none;">
+      <input type="text" id="fm-new-line-name" placeholder="Category name (e.g. Uber Boat)" />
+      <div class="color-picker" id="fm-color-picker"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" id="fm-cancel-btn">Cancel</button>
+      <button class="confirm" id="fm-save-btn">Add marker</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="manage-lines-backdrop">
+  <div class="manage-panel">
+    <div class="manage-header">
+      <h3>Manage lines — <span id="manage-lines-city-name"></span></h3>
+      <button class="cancel" id="manage-lines-close-btn">Close</button>
+    </div>
+    <div class="manage-toolbar">
+      <button id="manage-lines-add-btn">+ Add line</button>
+    </div>
+    <div class="manage-table-wrap">
+      <table class="manage-table">
+        <thead>
+          <tr><th></th><th>Name</th><th>Stations</th><th></th></tr>
+        </thead>
+        <tbody id="manage-lines-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="line-edit-backdrop">
+  <div class="modal">
+    <h3 id="line-edit-title">Add line</h3>
+    <input type="text" id="le-name" placeholder="Line name" />
+    <div class="color-picker" id="le-color-picker"></div>
+    <div class="modal-actions">
+      <button class="cancel" id="le-cancel-btn">Cancel</button>
+      <button class="confirm" id="le-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script>
+let LINE_COLORS = {};
+let cities = [];
+let currentCityId = localStorage.getItem('tubeTrackerCity') || 'london';
+let currentPinSizePct = 0.015;
+
+let stations = [];
+let visited = {};
+let pins = [];
+let markers = {};
+let activeFilter = null;
+
+function pinsForStation(stationId) {
+  return pins.filter(p => p.station_id === stationId);
+}
+function pinLines(pin, station) {
+  return (pin.lines && pin.lines.length) ? pin.lines : (station ? station.lines : []);
+}
+function stationCoveredLines(stationId) {
+  const s = stations.find(x => x.id === stationId);
+  const covered = new Set();
+  for (const p of pinsForStation(stationId)) pinLines(p, s).forEach(l => covered.add(l));
+  return covered;
+}
+
+function api(path) {
+  return '/api/cities/' + encodeURIComponent(currentCityId) + path;
+}
+
+function primaryColor(lines) {
+  for (const l of lines) if (LINE_COLORS[l]) return LINE_COLORS[l];
+  return '#888';
+}
+
+// Reusable color picker: swatches of colors already used in this city,
+// plus a native color input and a hex text field, all kept in sync.
+function buildColorPicker(container, initialColor, onChange) {
+  const existingColors = [...new Set(Object.values(LINE_COLORS))];
+  container.innerHTML = `
+    <div class="cp-swatches"></div>
+    <div class="cp-row">
+      <input type="color" class="cp-native" />
+      <input type="text" class="cp-hex" placeholder="#RRGGBB" maxlength="7" />
+    </div>
+  `;
+  const swatchesEl = container.querySelector('.cp-swatches');
+  const nativeEl = container.querySelector('.cp-native');
+  const hexEl = container.querySelector('.cp-hex');
+
+  function setColor(c) {
+    if (!/^#[0-9a-fA-F]{6}$/.test(c)) return;
+    nativeEl.value = c;
+    hexEl.value = c;
+    swatchesEl.querySelectorAll('.cp-swatch').forEach(sw =>
+      sw.classList.toggle('selected', sw.dataset.color.toLowerCase() === c.toLowerCase())
+    );
+    onChange(c);
+  }
+
+  existingColors.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'cp-swatch';
+    sw.style.background = c;
+    sw.dataset.color = c;
+    sw.title = c;
+    sw.onclick = () => setColor(c);
+    swatchesEl.appendChild(sw);
+  });
+
+  nativeEl.oninput = () => setColor(nativeEl.value);
+  hexEl.oninput = () => {
+    let v = hexEl.value.trim();
+    if (v && !v.startsWith('#')) v = '#' + v;
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) setColor(v);
+  };
+
+  setColor(/^#[0-9a-fA-F]{6}$/.test(initialColor) ? initialColor : '#888888');
+}
+
+// --- Map setup (Leaflet, created once; data reloaded per city) ---
+
+const map = L.map('map', { zoomControl: true }).setView([51.509, -0.118], 11);
+
+const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19
+});
+const streetsLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+});
+const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles &copy; Esri', maxZoom: 19
+});
+
+streetsLayer.addTo(map);
+L.control.layers({
+  'Dark': darkLayer, 'Streets': streetsLayer, 'Satellite': satelliteLayer
+}, {}, { position: 'topright' }).addTo(map);
+
+let tileErrorShown = false;
+function watchTileErrors(layer) {
+  layer.on('tileerror', () => {
+    if (!tileErrorShown) {
+      tileErrorShown = true;
+      document.getElementById('tile-warning').classList.add('visible');
+    }
+  });
+  layer.on('load', () => {
+    tileErrorShown = false;
+    document.getElementById('tile-warning').classList.remove('visible');
+  });
+}
+[darkLayer, streetsLayer, satelliteLayer].forEach(watchTileErrors);
+
+// --- City switching ---
+
+async function loadCities() {
+  cities = await fetch('/api/cities').then(r => r.json());
+  const select = document.getElementById('city-select');
+  select.innerHTML = '';
+  for (const c of cities) {
+    const opt = document.createElement('option');
+    opt.value = c.id; opt.textContent = c.name;
+    select.appendChild(opt);
+  }
+  const addOpt = document.createElement('option');
+  addOpt.value = '__add__'; addOpt.textContent = '+ Add city…';
+  select.appendChild(addOpt);
+
+  if (!cities.find(c => c.id === currentCityId)) currentCityId = cities[0] ? cities[0].id : 'london';
+  select.value = currentCityId;
+}
+
+document.getElementById('city-select').addEventListener('change', async (e) => {
+  if (e.target.value === '__add__') {
+    e.target.value = currentCityId;
+    document.getElementById('city-add-backdrop').classList.add('visible');
+    return;
+  }
+  await switchCity(e.target.value);
+});
+
+async function switchCity(cityId) {
+  currentCityId = cityId;
+  localStorage.setItem('tubeTrackerCity', cityId);
+  document.getElementById('station-panel').classList.remove('visible');
+  activeFilter = null;
+  for (const m of Object.values(markers)) map.removeLayer(m);
+  markers = {};
+  await loadCityData();
+}
+
+// --- Add-city modal ---
+
+document.getElementById('ca-cancel-btn').onclick = () => {
+  document.getElementById('city-add-backdrop').classList.remove('visible');
+  document.getElementById('ca-name').value = '';
+};
+document.getElementById('ca-save-btn').onclick = async () => {
+  const name = document.getElementById('ca-name').value.trim();
+  if (!name) return;
+  const res = await fetch('/api/cities', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+  });
+  if (!res.ok) { alert('Could not create city — ' + (await res.text())); return; }
+  const created = await res.json();
+  document.getElementById('city-add-backdrop').classList.remove('visible');
+  document.getElementById('ca-name').value = '';
+  await loadCities();
+  await switchCity(created.id);
+};
+
+// --- Free markers: for things on the map that aren't part of the transit
+// network (Uber Boat piers, cable car, etc). Implemented as an ordinary
+// station+line, just created via a faster single-step flow than going
+// through Manage Stations first. ---
+
+let pendingFreeMarkerCoords = null;
+
+function openFreeMarkerModal(x_pct, y_pct) {
+  pendingFreeMarkerCoords = { x_pct, y_pct };
+  document.getElementById('fm-name').value = '';
+  document.getElementById('fm-new-line-name').value = '';
+
+  const select = document.getElementById('fm-line-select');
+  select.innerHTML = '<option value="__new__">+ New category / colour…</option>';
+  for (const line of Object.keys(LINE_COLORS)) {
+    const opt = document.createElement('option');
+    opt.value = line; opt.textContent = line;
+    select.appendChild(opt);
+  }
+  select.value = '__new__';
+  document.getElementById('fm-new-line-fields').style.display = 'block';
+  buildColorPicker(document.getElementById('fm-color-picker'), '#8a5cf6', () => {});
+
+  document.getElementById('free-marker-backdrop').classList.add('visible');
+  document.getElementById('fm-name').focus();
+}
+
+document.getElementById('fm-line-select').addEventListener('change', (e) => {
+  document.getElementById('fm-new-line-fields').style.display = e.target.value === '__new__' ? 'block' : 'none';
+});
+
+document.getElementById('fm-cancel-btn').onclick = () => {
+  document.getElementById('free-marker-backdrop').classList.remove('visible');
+  pendingFreeMarkerCoords = null;
+};
+
+document.getElementById('fm-save-btn').onclick = async () => {
+  const name = document.getElementById('fm-name').value.trim();
+  if (!name || !pendingFreeMarkerCoords) { alert('Name is required'); return; }
+
+  const select = document.getElementById('fm-line-select');
+  let lineName, lineColor;
+  if (select.value === '__new__') {
+    lineName = document.getElementById('fm-new-line-name').value.trim();
+    if (!lineName) { alert('Category name is required'); return; }
+    lineColor = document.getElementById('fm-color-picker').querySelector('.cp-hex').value;
+    await fetch(api('/lines'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: lineName, color: lineColor })
+    });
+    LINE_COLORS[lineName] = lineColor;
+  } else {
+    lineName = select.value;
+  }
+
+  const stationRes = await fetch(api('/stations'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, lines: [lineName] })
+  });
+  const station = await stationRes.json();
+  stations.push(station);
+
+  const { x_pct, y_pct } = pendingFreeMarkerCoords;
+  const pinRes = await fetch(api('/pins'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ station_id: station.id, x_pct, y_pct, lines: [lineName] })
+  });
+  pins.push(await pinRes.json());
+
+  await fetch(api('/visited/' + encodeURIComponent(station.id) + '/lines/' + encodeURIComponent(lineName)), { method: 'POST' });
+  visited[station.id] = { visited_at: new Date().toISOString(), lines: [lineName] };
+
+  document.getElementById('free-marker-backdrop').classList.remove('visible');
+  pendingFreeMarkerCoords = null;
+  renderDiagramPins();
+  renderLineList();
+  renderOverall();
+};
+
+// --- Loading a city's full dataset ---
+
+async function loadCityData() {
+  const [linesRes, stationsRes, visitedRes, pinsRes] = await Promise.all([
+    fetch(api('/lines')).then(r => r.json()),
+    fetch(api('/stations')).then(r => r.json()),
+    fetch(api('/visited')).then(r => r.json()),
+    fetch(api('/pins')).then(r => r.json()),
+  ]);
+  LINE_COLORS = linesRes;
+  stations = stationsRes;
+  visited = visitedRes;
+  pins = pinsRes;
+
+  const cityRecord = cities.find(c => c.id === currentCityId);
+  currentPinSizePct = cityRecord ? cityRecord.pin_size_pct : 0.015;
+
+  applyCityBranding();
+  renderMarkers();
+  renderLineList();
+  renderOverall();
+  await loadDiagramStatus();
+
+  if (stations.length) {
+    const bounds = stations.filter(s => s.lat && s.lon).map(s => [s.lat, s.lon]);
+    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
+  }
+}
+
+// --- Branding: per-city display name (header + browser tab) and logo
+// (header + best-effort favicon) ---
+
+function applyCityBranding() {
+  const cityRecord = cities.find(c => c.id === currentCityId);
+  const title = (cityRecord && (cityRecord.app_title || cityRecord.name)) || 'Tube Tracker';
+  document.title = title;
+  document.getElementById('app-title-text').textContent = title;
+  loadCityLogo();
+}
+
+async function loadCityLogo() {
+  const data = await fetch(api('/logo')).then(r => r.json());
+  const img = document.getElementById('city-logo');
+  const placeholder = document.getElementById('logo-placeholder');
+  const favicon = document.getElementById('favicon-link');
+  if (data.exists) {
+    const url = api('/logo/image') + '?t=' + Date.now();
+    img.src = url;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    favicon.href = url;
+  } else {
+    img.style.display = 'none';
+    placeholder.style.display = 'block';
+    favicon.href = 'data:,';
+  }
+}
+
+document.getElementById('logo-container').onclick = () => document.getElementById('logo-file-input').click();
+document.getElementById('logo-file-input').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('image', file);
+  await fetch(api('/logo'), { method: 'POST', body: formData });
+  e.target.value = '';
+  await loadCityLogo();
+};
+
+document.getElementById('edit-title-btn').onclick = async () => {
+  const cityRecord = cities.find(c => c.id === currentCityId);
+  const current = (cityRecord && cityRecord.app_title) || (cityRecord && cityRecord.name) || '';
+  const next = prompt('Display name for ' + (cityRecord ? cityRecord.name : currentCityId) + ' (shown in the header and browser tab):', current);
+  if (next === null) return; // cancelled
+  const res = await fetch(api(''), {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ app_title: next })
+  });
+  const updated = await res.json();
+  const idx = cities.findIndex(c => c.id === currentCityId);
+  if (idx !== -1) cities[idx] = updated;
+  applyCityBranding();
+};
+
+async function load() {
+  await loadCities();
+  await loadCityData();
+}
+
+// --- Real-map markers ---
+
+function renderMarkers() {
+  for (const m of Object.values(markers)) map.removeLayer(m);
+  markers = {};
+  for (const s of stations) {
+    if (s.lat == null || s.lon == null) continue;
+    const isVisited = !!visited[s.id];
+    const color = primaryColor(s.lines);
+    const marker = L.circleMarker([s.lat, s.lon], {
+      radius: isVisited ? 12 : 8,
+      color: color,
+      weight: isVisited ? 4 : 2,
+      fillColor: isVisited ? color : '#0a0c0e',
+      fillOpacity: isVisited ? 0.95 : 0.5,
+    }).addTo(map);
+    marker.on('click', () => openStationPanel(s));
+    markers[s.id] = marker;
+  }
+}
+
+function refreshMarkerStyle(id) {
+  const s = stations.find(x => x.id === id);
+  const m = markers[id];
+  if (!s || !m) return;
+  const isVisited = !!visited[id];
+  const color = primaryColor(s.lines);
+  m.setStyle({
+    radius: isVisited ? 12 : 8,
+    weight: isVisited ? 4 : 2,
+    fillColor: isVisited ? color : '#0a0c0e',
+    fillOpacity: isVisited ? 0.95 : 0.5,
+  });
+}
+
+// --- Station panel (shared by real map + diagram pins) ---
+
+function openStationPanel(s, onlyLines, pinId) {
+  const panel = document.getElementById('station-panel');
+  document.getElementById('sp-name').textContent = s.name;
+  const scopeNote = onlyLines ? ' (this dot only)' : '';
+  document.getElementById('sp-lines').textContent =
+    (onlyLines || s.lines).join(' · ') + (s.zone ? ' · Zone ' + s.zone : '') + scopeNote;
+  const isVisited = !!visited[s.id];
+  const currentLines = new Set(isVisited ? (visited[s.id].lines || []) : []);
+  const chipLines = onlyLines && onlyLines.length ? onlyLines : s.lines;
+
+  const chipsEl = document.getElementById('sp-line-chips');
+  chipsEl.innerHTML = '';
+  for (const line of chipLines) {
+    const chip = document.createElement('div');
+    chip.className = 'line-chip' + (currentLines.has(line) ? ' selected' : '');
+    chip.style.background = LINE_COLORS[line] || '#666';
+    chip.textContent = line;
+    chip.onclick = async () => {
+      const method = currentLines.has(line) ? 'DELETE' : 'POST';
+      const res = await fetch(api('/visited/' + encodeURIComponent(s.id) + '/lines/' + encodeURIComponent(line)), { method });
+      const data = await res.json();
+      if (!visited[s.id]) visited[s.id] = { visited_at: new Date().toISOString(), lines: [] };
+      visited[s.id].lines = data.lines;
+      refreshMarkerStyle(s.id);
+      renderDiagramPins();
+      renderLineList();
+      renderOverall();
+      openStationPanel(s, onlyLines, pinId);
+    };
+    chipsEl.appendChild(chip);
+  }
+
+  const btn = document.getElementById('sp-btn');
+  btn.textContent = isVisited ? 'Clear this station' : 'Not visited yet';
+  btn.className = isVisited ? 'unmark' : 'mark';
+  btn.disabled = !isVisited;
+  btn.onclick = () => toggleVisited(s.id);
+
+  const deleteBtn = document.getElementById('sp-delete-pin-btn');
+  if (pinId) {
+    deleteBtn.style.display = 'block';
+    deleteBtn.onclick = () => deletePin(pinId);
+  } else {
+    deleteBtn.style.display = 'none';
+  }
+
+  panel.classList.add('visible');
+}
+
+async function deletePin(pinId) {
+  if (!confirm('Remove this pin from the diagram? (Visited status for its lines is kept — only the dot itself is removed.)')) return;
+  await fetch(api('/pins/' + encodeURIComponent(pinId)), { method: 'DELETE' });
+  pins = pins.filter(p => p.id !== pinId);
+  document.getElementById('station-panel').classList.remove('visible');
+  renderDiagramPins();
+  updateNeedsPinsUI();
+}
+
+async function toggleVisited(id) {
+  const res = await fetch(api('/visited/' + encodeURIComponent(id)), { method: 'POST' });
+  const data = await res.json();
+  if (data.visited) {
+    visited[id] = { visited_at: data.visited_at, lines: data.lines || [] };
+  } else {
+    delete visited[id];
+  }
+  refreshMarkerStyle(id);
+  renderDiagramPins();
+  renderLineList();
+  renderOverall();
+  const s = stations.find(x => x.id === id);
+  if (s) openStationPanel(s);
+}
+
+function renderOverall() {
+  const total = stations.length;
+  const done = stations.filter(s => visited[s.id]).length;
+  document.getElementById('overall-num').textContent = done + ' / ' + total;
+  updateNeedsPinsUI();
+}
+
+function getUncoveredLines(s) {
+  const v = visited[s.id];
+  if (!v || !v.lines || !v.lines.length) return [];
+  const covered = stationCoveredLines(s.id);
+  return v.lines.filter(l => !covered.has(l));
+}
+
+function getUnpinnedVisited() {
+  return stations.filter(s => getUncoveredLines(s).length > 0);
+}
+
+function updateNeedsPinsUI() {
+  const list = getUnpinnedVisited();
+  const diagramBadge = document.getElementById('diagram-badge');
+  if (diagramBadge) {
+    diagramBadge.textContent = list.length;
+    diagramBadge.style.display = list.length ? 'inline-block' : 'none';
+  }
+  const toolbarBadge = document.getElementById('needs-pins-badge');
+  if (toolbarBadge) {
+    toolbarBadge.textContent = list.length;
+    toolbarBadge.style.display = list.length ? 'inline-block' : 'none';
+  }
+  renderNeedsPinsDropdown();
+}
+
+function renderNeedsPinsDropdown() {
+  const dropdown = document.getElementById('needs-pins-dropdown');
+  if (!dropdown) return;
+  const list = getUnpinnedVisited();
+  if (!list.length) {
+    dropdown.innerHTML = `<div class="np-empty">Every visited line has a pin on this diagram 🎉</div>`;
+    return;
+  }
+  dropdown.innerHTML = list.map(s =>
+    `<div class="np-row" data-id="${s.id}">${s.name} <span style="opacity:0.6">— ${getUncoveredLines(s).join(', ')}</span></div>`
+  ).join('');
+  dropdown.querySelectorAll('.np-row').forEach(row => {
+    row.onclick = () => {
+      const s = stations.find(x => x.id === row.dataset.id);
+      startCalibrating(s);
+      dropdown.classList.remove('visible');
+    };
+  });
+}
+
+function renderLineList() {
+  const container = document.getElementById('line-list');
+  container.innerHTML = '';
+  const lineNames = Object.keys(LINE_COLORS);
+  for (const line of lineNames) {
+    const lineStations = stations.filter(s => s.lines.includes(line));
+    const done = lineStations.filter(s => visited[s.id]).length;
+    const row = document.createElement('div');
+    row.className = 'line-row' + (activeFilter && activeFilter !== line ? ' dimmed' : '');
+    row.innerHTML = `
+      <div class="chip" style="background:${LINE_COLORS[line]}"></div>
+      <div class="name">
+        ${line}
+        <div class="progress-track"><div class="progress-fill" style="width:${lineStations.length ? (done/lineStations.length*100) : 0}%;background:${LINE_COLORS[line]}"></div></div>
+      </div>
+      <div class="count">${done}/${lineStations.length}</div>
+    `;
+    row.onclick = () => {
+      activeFilter = activeFilter === line ? null : line;
+      applyFilter();
+      renderLineList();
+    };
+    container.appendChild(row);
+  }
+}
+
+function applyFilter() {
+  for (const s of stations) {
+    const m = markers[s.id];
+    if (!m) continue;
+    if (!activeFilter || s.lines.includes(activeFilter)) {
+      m.setStyle({ opacity: 1, fillOpacity: visited[s.id] ? 0.95 : 0.5 });
+    } else {
+      m.setStyle({ opacity: 0.12, fillOpacity: 0.05 });
+    }
+  }
+}
+
+// --- View switching (real map / diagram) ---
+
+let currentView = 'map';
+
+function switchView(view) {
+  currentView = view;
+  document.getElementById('btn-view-map').classList.toggle('active', view === 'map');
+  document.getElementById('btn-view-diagram').classList.toggle('active', view === 'diagram');
+  document.getElementById('map').classList.toggle('hidden', view !== 'map');
+  document.getElementById('diagram-view').classList.toggle('visible', view === 'diagram');
+  document.getElementById('add-station-handle').style.display = view === 'map' ? 'flex' : 'none';
+  document.getElementById('station-panel').classList.remove('visible');
+  if (view === 'map') setTimeout(() => map.invalidateSize(), 50);
+}
+document.getElementById('btn-view-map').onclick = () => switchView('map');
+document.getElementById('btn-view-diagram').onclick = () => switchView('diagram');
+
+function initAddStationHandle() {
+  const handle = document.getElementById('add-station-handle');
+  if (!handle) return;
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const ghost = document.createElement('div');
+    ghost.className = 'pin-ghost';
+    ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
+    document.body.appendChild(ghost);
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+    };
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.releasePointerCapture(e.pointerId);
+      ghost.remove();
+
+      const mapEl = document.getElementById('map');
+      const dropTarget = document.elementFromPoint(ev.clientX, ev.clientY);
+      const droppedOnMap = mapEl && dropTarget && mapEl.contains(dropTarget);
+      if (!droppedOnMap) return;
+
+      const latlng = map.mouseEventToLatLng(ev);
+      openStationEditModal(null, { lat: latlng.lat, lon: latlng.lng });
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+  });
+}
+initAddStationHandle();
+
+// --- Diagram view: upload, pins, pan, add-pin handle ---
+
+let diagramExists = false;
+let calibratingStation = null;
+let calibratingLines = [];
+let calibrationPhase = null; // 'select-lines' | 'placing'
+
+function startCalibrating(s) {
+  const uncovered = getUncoveredLines(s);
+  if (!uncovered.length) return;
+  calibratingStation = s;
+  if (uncovered.length === 1) {
+    calibratingLines = [uncovered[0]];
+    calibrationPhase = 'placing';
+  } else {
+    // Default to selecting all uncovered lines (covers the common "one
+    // combined dot" case in one step); deselect down to a subset for
+    // stations that draw separate dots per line instead.
+    calibratingLines = [...uncovered];
+    calibrationPhase = 'select-lines';
+  }
+  refreshCalibrationBanner();
+}
+
+function confirmCalibrationLines() {
+  if (!calibratingLines.length) return;
+  calibrationPhase = 'placing';
+  refreshCalibrationBanner();
+}
+
+async function placeCalibrationPin(x_pct, y_pct) {
+  if (!calibratingStation || calibrationPhase !== 'placing' || !calibratingLines.length) return;
+  const res = await fetch(api('/pins'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ station_id: calibratingStation.id, x_pct, y_pct, lines: calibratingLines })
+  });
+  const newPin = await res.json();
+  pins.push(newPin);
+  renderDiagramPins();
+  updateNeedsPinsUI();
+
+  // Same station might still have more uncovered lines (separate-dot case) —
+  // if so, re-enter selection for what's left instead of moving on.
+  if (getUncoveredLines(calibratingStation).length) {
+    startCalibrating(calibratingStation);
+  } else {
+    const remaining = getUnpinnedVisited();
+    if (remaining.length) startCalibrating(remaining[0]);
+    else stopCalibrating();
+  }
+}
+
+function stopCalibrating() {
+  calibratingStation = null;
+  calibratingLines = [];
+  calibrationPhase = null;
+  refreshCalibrationBanner();
+}
+
+function refreshCalibrationBanner() {
+  const banner = document.getElementById('calibration-banner');
+  const chipsEl = document.getElementById('calibration-line-chips');
+  if (!banner) return;
+  if (!calibratingStation) {
+    banner.classList.remove('visible');
+    return;
+  }
+  banner.classList.add('visible');
+
+  if (calibrationPhase === 'select-lines') {
+    document.getElementById('calibration-banner-text').textContent =
+      'Which lines does this dot represent for "' + calibratingStation.name + '"?';
+    chipsEl.style.display = 'flex';
+    chipsEl.innerHTML = '';
+    for (const line of getUncoveredLines(calibratingStation)) {
+      const chip = document.createElement('div');
+      chip.className = 'line-chip' + (calibratingLines.includes(line) ? ' selected' : '');
+      chip.style.background = LINE_COLORS[line] || '#666';
+      chip.textContent = line;
+      chip.onclick = () => {
+        calibratingLines = calibratingLines.includes(line)
+          ? calibratingLines.filter(l => l !== line)
+          : [...calibratingLines, line];
+        refreshCalibrationBanner();
+      };
+      chipsEl.appendChild(chip);
+    }
+    const goBtn = document.createElement('button');
+    goBtn.textContent = 'Continue';
+    goBtn.disabled = calibratingLines.length === 0;
+    goBtn.onclick = confirmCalibrationLines;
+    chipsEl.appendChild(goBtn);
+  } else {
+    chipsEl.style.display = 'none';
+    document.getElementById('calibration-banner-text').textContent =
+      'Placing "' + calibratingStation.name + '" (' + calibratingLines.join(', ') + ') — drag the pin onto the map';
+  }
+}
+
+async function loadDiagramStatus() {
+  const data = await fetch(api('/diagram')).then(r => r.json());
+  diagramExists = data.exists;
+  renderDiagramView();
+}
+
+function renderDiagramView() {
+  const container = document.getElementById('diagram-view');
+  if (!diagramExists) {
+    container.innerHTML = `
+      <div id="diagram-empty">
+        <div>
+          <strong>No diagram uploaded yet</strong>
+          <div class="hint">Upload your own copy of the official map — for personal reference only, from an image you already have rights to view. We never supply or bundle this ourselves.</div>
+        </div>
+        <input type="file" id="diagram-file-input" accept="image/png,image/jpeg,image/webp" style="display:none" />
+        <button id="diagram-upload-btn">Upload map image</button>
+      </div>`;
+    document.getElementById('diagram-upload-btn').onclick = () => document.getElementById('diagram-file-input').click();
+    document.getElementById('diagram-file-input').onchange = handleDiagramFile;
+    return;
+  }
+  container.innerHTML = `
+    <div id="diagram-toolbar">
+      <span>Drag to pan · scroll to zoom · drag the pin onto a spot · click a placed pin to mark visited</span>
+      <input type="file" id="diagram-file-input" accept="image/png,image/jpeg,image/webp" style="display:none" />
+      <button id="diagram-replace-btn">Replace image</button>
+      <div id="calibration-banner"><span id="calibration-banner-text"></span><div id="calibration-line-chips"></div><button id="calibration-cancel-btn">✕</button></div>
+      <div style="position:relative">
+        <button id="needs-pins-btn">Needs pins<span class="badge" id="needs-pins-badge" style="display:none"></span></button>
+        <div id="needs-pins-dropdown"></div>
+      </div>
+      <div id="add-pin-handle" title="Drag onto the map to add a station"><span class="dot"></span>Add pin</div>
+      <div id="free-marker-handle" title="Drag onto the map to add a custom point (Uber Boat, cable car, anything off-network)"><span class="dot"></span>Free marker</div>
+      <div id="pin-size-control">
+        Pin size
+        <input type="range" id="pin-size-slider" min="0.003" max="0.06" step="0.001" />
+      </div>
+      <div id="diagram-zoom-controls">
+        <button id="zoom-out-btn" title="Zoom out">−</button>
+        <button id="zoom-fit-btn" title="Fit to window">⤢</button>
+        <button id="zoom-in-btn" title="Zoom in">+</button>
+      </div>
+    </div>
+    <div id="diagram-scroll">
+      <div id="diagram-canvas">
+        <img id="diagram-img" src="${api('/diagram/image')}?t=${Date.now()}" alt="Uploaded diagram" draggable="false" ondragstart="return false" />
+      </div>
+    </div>`;
+  document.getElementById('diagram-replace-btn').onclick = () => document.getElementById('diagram-file-input').click();
+  document.getElementById('diagram-file-input').onchange = handleDiagramFile;
+
+  const needsPinsBtn = document.getElementById('needs-pins-btn');
+  const needsPinsDropdown = document.getElementById('needs-pins-dropdown');
+  needsPinsBtn.onclick = (e) => {
+    e.stopPropagation();
+    needsPinsDropdown.classList.toggle('visible');
+  };
+  document.addEventListener('click', (e) => {
+    if (!needsPinsDropdown.contains(e.target) && e.target !== needsPinsBtn) {
+      needsPinsDropdown.classList.remove('visible');
+    }
+  });
+  document.getElementById('calibration-cancel-btn').onclick = () => stopCalibrating();
+  updateNeedsPinsUI();
+  refreshCalibrationBanner();
+
+  const canvas = document.getElementById('diagram-canvas');
+  canvas.addEventListener('pointerdown', onCanvasPointerDown);
+  canvas.addEventListener('wheel', onCanvasWheel, { passive: false });
+  initAddPinHandle();
+
+  const img = document.getElementById('diagram-img');
+  img.addEventListener('load', () => { fitDiagramToWindow(); renderDiagramPins(); });
+  document.getElementById('zoom-in-btn').onclick = () => setDiagramZoom(diagramZoom * 1.3);
+  document.getElementById('zoom-out-btn').onclick = () => setDiagramZoom(diagramZoom / 1.3);
+  document.getElementById('zoom-fit-btn').onclick = () => fitDiagramToWindow();
+
+  const slider = document.getElementById('pin-size-slider');
+  slider.value = currentPinSizePct;
+  slider.addEventListener('input', () => {
+    currentPinSizePct = parseFloat(slider.value);
+    renderDiagramPins(); // live preview while dragging
+  });
+  slider.addEventListener('change', async () => {
+    // persist only once the user releases the slider, not on every tick
+    await fetch(api('/pin-size'), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin_size_pct: currentPinSizePct })
+    });
+    const cityRecord = cities.find(c => c.id === currentCityId);
+    if (cityRecord) cityRecord.pin_size_pct = currentPinSizePct;
+  });
+
+  renderDiagramPins();
+}
+
+async function handleDiagramFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('image', file);
+  await fetch(api('/diagram'), { method: 'POST', body: formData });
+  await loadDiagramStatus();
+}
+
+let diagramFitScale = 1;
+let diagramZoom = 1;
+
+function onCanvasPointerDown(e) {
+  if (e.button !== 0) return;
+  if (e.target.closest('.diagram-pin')) return;
+  e.preventDefault();
+  const canvas = document.getElementById('diagram-canvas');
+  const scrollEl = document.getElementById('diagram-scroll');
+  canvas.setPointerCapture(e.pointerId);
+  diagramDragState = {
+    pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
+    scrollLeft: scrollEl.scrollLeft, scrollTop: scrollEl.scrollTop
+  };
+  canvas.classList.add('dragging');
+  canvas.addEventListener('pointermove', onCanvasPointerMove);
+  canvas.addEventListener('pointerup', onCanvasPointerUp);
+  canvas.addEventListener('pointercancel', onCanvasPointerUp);
+}
+let diagramDragState = null;
+function onCanvasPointerMove(e) {
+  if (!diagramDragState || e.pointerId !== diagramDragState.pointerId) return;
+  const dx = e.clientX - diagramDragState.startX;
+  const dy = e.clientY - diagramDragState.startY;
+  const scrollEl = document.getElementById('diagram-scroll');
+  scrollEl.scrollLeft = diagramDragState.scrollLeft - dx;
+  scrollEl.scrollTop = diagramDragState.scrollTop - dy;
+}
+function onCanvasPointerUp(e) {
+  if (!diagramDragState || e.pointerId !== diagramDragState.pointerId) return;
+  const canvas = document.getElementById('diagram-canvas');
+  canvas.releasePointerCapture(e.pointerId);
+  canvas.removeEventListener('pointermove', onCanvasPointerMove);
+  canvas.removeEventListener('pointerup', onCanvasPointerUp);
+  canvas.removeEventListener('pointercancel', onCanvasPointerUp);
+  canvas.classList.remove('dragging');
+  diagramDragState = null;
+}
+
+function initDragHandle(handleId, onDrop) {
+  const handle = document.getElementById(handleId);
+  if (!handle) return;
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    const ghost = document.createElement('div');
+    ghost.className = 'pin-ghost';
+    ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
+    document.body.appendChild(ghost);
+
+    const onMove = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+    };
+    const onUp = (ev) => {
+      if (ev.pointerId !== e.pointerId) return;
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.releasePointerCapture(e.pointerId);
+      ghost.remove();
+
+      const img = document.getElementById('diagram-img');
+      const dropTarget = document.elementFromPoint(ev.clientX, ev.clientY);
+      const droppedOnImage = img && dropTarget && (dropTarget === img || !!dropTarget.closest('#diagram-canvas'));
+      if (!droppedOnImage) return;
+
+      const rect = img.getBoundingClientRect();
+      const x_pct = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+      const y_pct = Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height));
+      onDrop(x_pct, y_pct);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+  });
+}
+
+function initAddPinHandle() {
+  initDragHandle('add-pin-handle', (x_pct, y_pct) => {
+    if (calibratingStation) placeCalibrationPin(x_pct, y_pct);
+    else openPinModal(x_pct, y_pct);
+  });
+  initDragHandle('free-marker-handle', (x_pct, y_pct) => openFreeMarkerModal(x_pct, y_pct));
+}
+
+function fitDiagramToWindow() {
+  const img = document.getElementById('diagram-img');
+  const scrollEl = document.getElementById('diagram-scroll');
+  if (!img || !img.naturalWidth || !scrollEl) return;
+  const availW = scrollEl.clientWidth - 24;
+  const availH = scrollEl.clientHeight - 24;
+  diagramFitScale = Math.min(availW / img.naturalWidth, availH / img.naturalHeight, 1);
+  diagramZoom = 1;
+  applyDiagramScale();
+}
+function setDiagramZoom(z) {
+  diagramZoom = Math.max(0.1, Math.min(z, 8));
+  applyDiagramScale();
+}
+
+function onCanvasWheel(e) {
+  e.preventDefault();
+  const scrollEl = document.getElementById('diagram-scroll');
+  const img = document.getElementById('diagram-img');
+  if (!scrollEl || !img) return;
+
+  const rect = scrollEl.getBoundingClientRect();
+  const cursorX = e.clientX - rect.left; // cursor position within the visible viewport
+  const cursorY = e.clientY - rect.top;
+
+  const beforeWidth = img.getBoundingClientRect().width;
+  const beforeHeight = img.getBoundingClientRect().height;
+
+  // Which fraction of the image is currently under the cursor — this is what
+  // we'll keep fixed under the cursor after the zoom, so zooming feels
+  // anchored to the pointer instead of drifting toward the corner.
+  const fracX = (scrollEl.scrollLeft + cursorX) / beforeWidth;
+  const fracY = (scrollEl.scrollTop + cursorY) / beforeHeight;
+
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  diagramZoom = Math.max(0.1, Math.min(diagramZoom * factor, 8));
+  applyDiagramScale();
+
+  const afterWidth = img.getBoundingClientRect().width;
+  const afterHeight = img.getBoundingClientRect().height;
+
+  scrollEl.scrollLeft = fracX * afterWidth - cursorX;
+  scrollEl.scrollTop = fracY * afterHeight - cursorY;
+}
+function applyDiagramScale() {
+  const img = document.getElementById('diagram-img');
+  if (!img || !img.naturalWidth) return;
+  const scale = diagramFitScale * diagramZoom;
+  img.style.width = (img.naturalWidth * scale) + 'px';
+  img.style.height = 'auto';
+  renderDiagramPins();
+}
+
+function renderDiagramPins() {
+  const canvas = document.getElementById('diagram-canvas');
+  const img = document.getElementById('diagram-img');
+  if (!canvas) return;
+  canvas.querySelectorAll('.diagram-pin').forEach(el => el.remove());
+
+  // Pin size is proportional to the image's *current displayed* width, so it
+  // scales with zoom instead of staying a fixed CSS pixel size (which made
+  // pins comically large when zoomed way out, and near-invisible zoomed in).
+  const displayedWidth = img ? img.getBoundingClientRect().width : 0;
+  const pinPx = Math.max(6, Math.min(120, displayedWidth * currentPinSizePct));
+
+  for (const p of pins) {
+    const s = stations.find(x => x.id === p.station_id);
+    if (!s) continue;
+    const dotLines = pinLines(p, s); // this pin's own subset, or the whole station if unscoped
+    const visitedLines = new Set((visited[s.id] && visited[s.id].lines) || []);
+    const isVisited = dotLines.length > 0 && dotLines.every(l => visitedLines.has(l));
+
+    const pin = document.createElement('div');
+    pin.className = 'diagram-pin' + (isVisited ? '' : ' unvisited');
+    pin.style.left = (p.x_pct * 100) + '%';
+    pin.style.top = (p.y_pct * 100) + '%';
+    pin.style.width = pinPx + 'px';
+    pin.style.height = pinPx + 'px';
+    pin.style.marginLeft = (-pinPx / 2) + 'px';
+    pin.style.marginTop = (-pinPx / 2) + 'px';
+    pin.style.background = primaryColor(dotLines);
+    pin.title = s.name + (p.lines && p.lines.length ? ' — ' + p.lines.join(', ') : '');
+    pin.onclick = (e) => { e.stopPropagation(); openStationPanel(s, p.lines && p.lines.length ? p.lines : null, p.id); };
+    canvas.appendChild(pin);
+  }
+}
+
+// --- Pin-placement modal ---
+
+let pendingPinCoords = null;
+let modalSelectedStation = null;
+let modalSelectedLines = new Set();
+
+function openPinModal(x_pct, y_pct) {
+  pendingPinCoords = { x_pct, y_pct };
+  modalSelectedStation = null;
+  modalSelectedLines = new Set();
+  document.getElementById('pin-station-search').value = '';
+  document.getElementById('pin-line-chips').innerHTML = '';
+  document.getElementById('pin-modal-confirm').disabled = true;
+  renderStationSearchResults('');
+  document.getElementById('pin-modal-backdrop').classList.add('visible');
+  document.getElementById('pin-station-search').focus();
+}
+function closePinModal() {
+  document.getElementById('pin-modal-backdrop').classList.remove('visible');
+  pendingPinCoords = null;
+}
+function renderStationSearchResults(query) {
+  const listEl = document.getElementById('pin-station-list');
+  listEl.innerHTML = '';
+  const q = query.trim().toLowerCase();
+  // Deliberately not filtering out "fully pinned" stations here — an
+  // unscoped pin (one that covers a whole station rather than a specific
+  // line) makes every one of that station's lines look "covered," which
+  // would otherwise silently hide it from search even when you want to add
+  // a new, more specific dot for one particular line.
+  const results = (q ? stations.filter(s => s.name.toLowerCase().includes(q)) : stations).slice(0, 40);
+  for (const s of results) {
+    const row = document.createElement('div');
+    row.className = 'modal-station-row' + (modalSelectedStation && modalSelectedStation.id === s.id ? ' selected' : '');
+    row.textContent = s.name;
+    row.onclick = () => selectModalStation(s);
+    listEl.appendChild(row);
+  }
+}
+function selectModalStation(s) {
+  modalSelectedStation = s;
+  const covered = stationCoveredLines(s.id);
+  const uncovered = s.lines.filter(l => !covered.has(l));
+  // Default to the lines this station is still missing a dot for — covers
+  // the common single/combined-dot case in one click, while still letting
+  // you deselect down to a subset for stations with separate dots per line.
+  modalSelectedLines = new Set(uncovered.length ? uncovered : [s.lines[0]]);
+  document.getElementById('pin-station-search').value = s.name;
+  renderStationSearchResults(s.name);
+  renderModalLineChips();
+  document.getElementById('pin-modal-confirm').disabled = modalSelectedLines.size === 0;
+}
+function renderModalLineChips() {
+  const chipsEl = document.getElementById('pin-line-chips');
+  chipsEl.innerHTML = '';
+  if (!modalSelectedStation) return;
+  for (const line of modalSelectedStation.lines) {
+    const chip = document.createElement('div');
+    chip.className = 'line-chip' + (modalSelectedLines.has(line) ? ' selected' : '');
+    chip.style.background = LINE_COLORS[line] || '#666';
+    chip.textContent = line;
+    chip.onclick = () => {
+      if (modalSelectedLines.has(line)) modalSelectedLines.delete(line); else modalSelectedLines.add(line);
+      renderModalLineChips();
+      document.getElementById('pin-modal-confirm').disabled = modalSelectedLines.size === 0;
+    };
+    chipsEl.appendChild(chip);
+  }
+}
+document.getElementById('pin-station-search').addEventListener('input', (e) => renderStationSearchResults(e.target.value));
+document.getElementById('pin-modal-cancel').onclick = closePinModal;
+document.getElementById('pin-modal-backdrop').addEventListener('click', (e) => {
+  if (e.target.id === 'pin-modal-backdrop') closePinModal();
+});
+document.getElementById('pin-modal-confirm').onclick = async () => {
+  if (!modalSelectedStation || !pendingPinCoords || modalSelectedLines.size === 0) return;
+  const { x_pct, y_pct } = pendingPinCoords;
+  const stationId = modalSelectedStation.id;
+  const linesArr = [...modalSelectedLines];
+
+  const res = await fetch(api('/pins'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ station_id: stationId, x_pct, y_pct, lines: linesArr })
+  });
+  const newPin = await res.json();
+  pins.push(newPin);
+
+  for (const line of linesArr) {
+    await fetch(api('/visited/' + encodeURIComponent(stationId) + '/lines/' + encodeURIComponent(line)), { method: 'POST' });
+  }
+  if (!visited[stationId]) visited[stationId] = { visited_at: new Date().toISOString(), lines: [] };
+  visited[stationId].lines = [...new Set([...(visited[stationId].lines || []), ...linesArr])];
+
+  closePinModal();
+  renderDiagramPins();
+  refreshMarkerStyle(stationId);
+  renderLineList();
+  renderOverall();
+};
+
+// --- Manage stations screen ---
+
+document.getElementById('manage-stations-btn').onclick = openManagePanel;
+document.getElementById('manage-close-btn').onclick = () => document.getElementById('manage-backdrop').classList.remove('visible');
+document.getElementById('manage-search').addEventListener('input', renderManageTable);
+
+function openManagePanel() {
+  document.getElementById('manage-city-name').textContent = cities.find(c => c.id === currentCityId)?.name || currentCityId;
+  document.getElementById('manage-backdrop').classList.add('visible');
+  renderManageTable();
+}
+
+function renderManageTable() {
+  const q = document.getElementById('manage-search').value.trim().toLowerCase();
+  const body = document.getElementById('manage-table-body');
+  body.innerHTML = '';
+  const rows = q ? stations.filter(s => s.name.toLowerCase().includes(q)) : stations;
+  for (const s of rows) {
+    const tr = document.createElement('tr');
+    const linesHtml = s.lines.map(l => `<span class="line-tag" style="background:${LINE_COLORS[l] || '#666'}">${l}</span>`).join('');
+    tr.innerHTML = `
+      <td>${s.name}</td>
+      <td>${linesHtml}</td>
+      <td>${s.zone || ''}</td>
+      <td>${s.lat ?? ''}</td>
+      <td>${s.lon ?? ''}</td>
+      <td class="row-actions"><button data-act="edit">✎</button><button data-act="del">✕</button></td>
+    `;
+    tr.querySelector('[data-act="edit"]').onclick = () => openStationEditModal(s);
+    tr.querySelector('[data-act="del"]').onclick = () => deleteStationFromManage(s);
+    body.appendChild(tr);
+  }
+}
+
+async function deleteStationFromManage(s) {
+  if (!confirm(`Remove "${s.name}" from ${currentCityId}? This also clears any visited/pin data for it.`)) return;
+  await fetch(api('/stations/' + encodeURIComponent(s.id)), { method: 'DELETE' });
+  await loadCityData();
+  renderManageTable();
+}
+
+let editingStationId = null;
+// --- Autocomplete for the comma-separated lines field, so typos/near-
+// duplicates don't silently create a whole new line ---
+
+function wireLinesAutocomplete() {
+  const input = document.getElementById('se-lines');
+  const dropdown = document.getElementById('se-lines-suggestions');
+  let activeIndex = -1;
+
+  function getSegments(value) { return value.split(','); }
+  function currentTypedSegment(value) {
+    const segs = getSegments(value);
+    return segs[segs.length - 1].trim();
+  }
+  function alreadyEnteredLines(value) {
+    const segs = getSegments(value).slice(0, -1).map(s => s.trim().toLowerCase()).filter(Boolean);
+    return new Set(segs);
+  }
+  function computeMatches(value) {
+    const typed = currentTypedSegment(value);
+    if (!typed) return [];
+    const entered = alreadyEnteredLines(value);
+    return Object.keys(LINE_COLORS).filter(line =>
+      line.toLowerCase().includes(typed.toLowerCase()) && !entered.has(line.toLowerCase())
+    ).slice(0, 8);
+  }
+  function selectSuggestion(line) {
+    const rawSegs = getSegments(input.value);
+    const priorSegs = rawSegs.slice(0, -1).map(s => s.trim()).filter(Boolean);
+    input.value = [...priorSegs, line].join(', ') + ', ';
+    dropdown.classList.remove('visible');
+    activeIndex = -1;
+    input.focus();
+  }
+  function render() {
+    const matches = computeMatches(input.value);
+    activeIndex = -1;
+    if (!matches.length) { dropdown.classList.remove('visible'); dropdown.innerHTML = ''; return; }
+    dropdown.innerHTML = matches.map(line =>
+      `<div class="autocomplete-row"><span class="ac-dot" style="background:${LINE_COLORS[line]}"></span>${line}</div>`
+    ).join('');
+    [...dropdown.children].forEach((row, i) => { row.onclick = () => selectSuggestion(matches[i]); });
+    dropdown.classList.add('visible');
+    dropdown._matches = matches;
+  }
+
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('blur', () => setTimeout(() => dropdown.classList.remove('visible'), 150));
+  input.addEventListener('keydown', (e) => {
+    const matches = dropdown._matches || [];
+    if (!dropdown.classList.contains('visible') || !matches.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, matches.length - 1);
+      [...dropdown.children].forEach((row, i) => row.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      [...dropdown.children].forEach((row, i) => row.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      selectSuggestion(matches[activeIndex]);
+    } else if (e.key === 'Escape') {
+      dropdown.classList.remove('visible');
+    }
+  });
+}
+wireLinesAutocomplete();
+
+document.getElementById('manage-add-btn').onclick = () => openStationEditModal(null);
+document.getElementById('se-cancel-btn').onclick = () => document.getElementById('station-edit-backdrop').classList.remove('visible');
+
+function openStationEditModal(s, prefillCoords) {
+  editingStationId = s ? s.id : null;
+  document.getElementById('station-edit-title').textContent = s ? 'Edit station' : 'Add station';
+  document.getElementById('se-name').value = s ? s.name : '';
+  document.getElementById('se-lines').value = s ? s.lines.join(', ') : '';
+  document.getElementById('se-zone').value = s ? (s.zone || '') : '';
+  const lat = s && s.lat != null ? s.lat : (prefillCoords ? prefillCoords.lat : '');
+  const lon = s && s.lon != null ? s.lon : (prefillCoords ? prefillCoords.lon : '');
+  document.getElementById('se-lat').value = lat;
+  document.getElementById('se-lon').value = lon;
+  document.getElementById('station-edit-backdrop').classList.add('visible');
+  document.getElementById('se-name').focus();
+}
+
+document.getElementById('se-save-btn').onclick = async () => {
+  const name = document.getElementById('se-name').value.trim();
+  if (!name) { alert('Name is required'); return; }
+  const lines = document.getElementById('se-lines').value.split(',').map(s => s.trim()).filter(Boolean);
+  const zone = document.getElementById('se-zone').value.trim();
+  const latStr = document.getElementById('se-lat').value.trim();
+  const lonStr = document.getElementById('se-lon').value.trim();
+  const body = {
+    name, lines, zone,
+    lat: latStr ? parseFloat(latStr) : null,
+    lon: lonStr ? parseFloat(lonStr) : null,
+  };
+
+  for (const line of lines) {
+    if (!LINE_COLORS[line]) {
+      await fetch(api('/lines'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: line, color: '#888888' })
+      });
+    }
+  }
+
+  if (editingStationId) {
+    await fetch(api('/stations/' + encodeURIComponent(editingStationId)), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+  } else {
+    await fetch(api('/stations'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+  }
+  document.getElementById('station-edit-backdrop').classList.remove('visible');
+  await loadCityData();
+  renderManageTable();
+};
+
+document.getElementById('manage-export-json-btn').onclick = () => {
+  window.location.href = api('/stations/export?format=json');
+};
+document.getElementById('manage-export-xlsx-btn').onclick = () => {
+  window.location.href = api('/stations/export?format=xlsx');
+};
+document.getElementById('manage-import-btn').onclick = () => document.getElementById('manage-import-input').click();
+document.getElementById('manage-import-input').onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('manage-import-status');
+  statusEl.textContent = 'Importing…';
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(api('/stations/import'), { method: 'POST', body: formData });
+  const data = await res.json();
+  if (!res.ok) {
+    statusEl.textContent = 'Import failed: ' + (data.description || res.statusText);
+  } else {
+    statusEl.textContent = `Imported ${data.imported}, updated ${data.updated}, skipped ${data.skipped}`;
+  }
+  e.target.value = '';
+  await loadCityData();
+  renderManageTable();
+};
+
+// --- Manage lines screen ---
+
+document.getElementById('manage-lines-btn').onclick = openManageLinesPanel;
+document.getElementById('manage-lines-close-btn').onclick = () => document.getElementById('manage-lines-backdrop').classList.remove('visible');
+
+function openManageLinesPanel() {
+  document.getElementById('manage-lines-city-name').textContent = cities.find(c => c.id === currentCityId)?.name || currentCityId;
+  document.getElementById('manage-lines-backdrop').classList.add('visible');
+  renderManageLinesTable();
+}
+
+function renderManageLinesTable() {
+  const body = document.getElementById('manage-lines-table-body');
+  body.innerHTML = '';
+  const lineNames = Object.keys(LINE_COLORS).sort();
+  for (const line of lineNames) {
+    const stationCount = stations.filter(s => s.lines.includes(line)).length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><div class="cp-swatch" style="cursor:pointer;width:20px;height:20px;" data-action="edit"></div></td>
+      <td>${line}</td>
+      <td>${stationCount}</td>
+      <td class="row-actions"><button data-act="edit">✎</button><button data-act="del">✕</button></td>
+    `;
+    tr.querySelector('.cp-swatch').style.background = LINE_COLORS[line];
+    tr.querySelector('.cp-swatch').onclick = () => openLineEditModal(line);
+    tr.querySelector('[data-act="edit"]').onclick = () => openLineEditModal(line);
+    tr.querySelector('[data-act="del"]').onclick = () => deleteLineFromManage(line, stationCount);
+    body.appendChild(tr);
+  }
+}
+
+async function deleteLineFromManage(line, stationCount) {
+  const warn = stationCount
+    ? `"${line}" is used by ${stationCount} station(s). Deleting it removes it from their line lists — the stations themselves stay, just without this line. Continue?`
+    : `Delete line "${line}"?`;
+  if (!confirm(warn)) return;
+  await fetch(api('/lines/' + encodeURIComponent(line)), { method: 'DELETE' });
+  await loadCityData();
+  renderManageLinesTable();
+}
+
+let editingLineName = null;
+document.getElementById('manage-lines-add-btn').onclick = () => openLineEditModal(null);
+document.getElementById('le-cancel-btn').onclick = () => document.getElementById('line-edit-backdrop').classList.remove('visible');
+
+function openLineEditModal(line) {
+  editingLineName = line;
+  document.getElementById('line-edit-title').textContent = line ? 'Edit line' : 'Add line';
+  const nameInput = document.getElementById('le-name');
+  nameInput.value = line || '';
+  nameInput.disabled = !!line; // renaming would orphan existing station_lines/visited_lines/pin references, so keep it simple: color-only edits for existing lines
+  buildColorPicker(document.getElementById('le-color-picker'), line ? LINE_COLORS[line] : '#888888', () => {});
+  document.getElementById('line-edit-backdrop').classList.add('visible');
+}
+
+document.getElementById('le-save-btn').onclick = async () => {
+  const name = document.getElementById('le-name').value.trim();
+  if (!name) { alert('Name is required'); return; }
+  const color = document.getElementById('le-color-picker').querySelector('.cp-hex').value;
+  await fetch(api('/lines'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, color })
+  });
+  document.getElementById('line-edit-backdrop').classList.remove('visible');
+  await loadCityData();
+  renderManageLinesTable();
+};
+
+load();
+</script>
+</body>
+</html>

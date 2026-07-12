@@ -1,0 +1,21 @@
+# Runtime data — created by docker-compose, never commit real user data
+/data/
+
+# Environment overrides
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
