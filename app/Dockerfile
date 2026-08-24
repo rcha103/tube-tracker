@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="Tube Tracker"
-LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.version="2.0.0"
 LABEL org.opencontainers.image.source="https://github.com/<your-username>/tube-tracker"
 LABEL org.opencontainers.image.licenses="MIT"
 

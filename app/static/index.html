@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Tube Tracker</title>
 <link rel="icon" id="favicon-link" href="data:," />
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0d1013" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Tube Tracker" />
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
 <style>
   :root{
@@ -578,11 +584,14 @@
     padding:5px 12px;
     font-size:11px;
     font-weight:600;
-    cursor:grab;
-    touch-action:none;
+    cursor:pointer;
     user-select:none;
   }
-  #add-pin-handle:active, #free-marker-handle:active, #add-station-handle:active{cursor:grabbing;}
+  #add-pin-handle.armed, #free-marker-handle.armed, #add-station-handle.armed{
+    background:var(--accent);
+    color:#fff;
+    box-shadow:0 0 0 3px rgba(220,36,31,0.35);
+  }
   #add-station-handle{
     position:absolute;
     bottom:16px;
@@ -598,6 +607,7 @@
     flex-shrink:0;
   }
   #free-marker-handle .dot{background:#8a5cf6;}
+  #map.placing, #diagram-canvas.placing{cursor:crosshair;}
 
   .autocomplete-dropdown{
     position:absolute;
@@ -661,17 +671,6 @@
     font-family:monospace;
   }
 
-  .pin-ghost{
-    position:fixed;
-    width:28px;height:28px;
-    margin-left:-14px;margin-top:-14px;
-    border-radius:50%;
-    background:var(--accent);
-    border:3px solid #fff;
-    box-shadow:0 4px 12px rgba(0,0,0,0.5);
-    pointer-events:none;
-    z-index:3000;
-  }
 
   .modal-backdrop{
     position:fixed;
@@ -745,6 +744,77 @@
   .modal-actions .cancel{background:var(--panel-2);color:var(--text);border:1px solid var(--line);}
   .modal-actions .confirm{background:var(--text);color:var(--bg);}
   .modal-actions .confirm:disabled{opacity:0.4;cursor:not-allowed;}
+
+  #lines-toggle-btn{display:none;}
+  #aside-backdrop{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.5);
+    z-index:1400;
+  }
+  #aside-backdrop.visible{display:block;}
+
+  /* --- Mobile layout (narrow viewports: phones/small tablets) --- */
+  @media (max-width: 760px){
+    header{flex-wrap:wrap; row-gap:8px; padding:10px 12px;}
+    header .sub{display:none;}
+    #lines-toggle-btn{
+      display:block;
+      background:var(--panel-2);
+      color:var(--text);
+      border:1px solid var(--line);
+      border-radius:6px;
+      padding:8px 12px;
+      font-size:12px;
+      cursor:pointer;
+    }
+    aside{
+      position:fixed;
+      top:0; right:0; bottom:0;
+      width:min(300px, 85vw);
+      z-index:1500;
+      transform:translateX(100%);
+      transition:transform 0.2s ease;
+      box-shadow:-8px 0 24px rgba(0,0,0,0.4);
+    }
+    aside.open{transform:translateX(0);}
+    #station-panel{left:12px; right:12px; width:auto;}
+    #diagram-toolbar{overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap;}
+    #diagram-toolbar > span{display:none;}
+  }
+
+  /* --- Touch input (phones/tablets, regardless of screen width) --- */
+  @media (pointer: coarse){
+    /* iOS Safari auto-zooms the page when focusing an input/select under
+       16px font-size — keep every text input at or above that. */
+    .modal input[type="text"], .manage-toolbar input[type="text"], .cp-hex, #city-select{
+      font-size:16px;
+    }
+    #add-pin-handle, #free-marker-handle, #add-station-handle{padding:10px 16px; font-size:13px;}
+    #diagram-zoom-controls button{width:38px; height:38px; font-size:18px;}
+    #calibration-cancel-btn{width:30px; height:30px;}
+    .view-btn, #manage-stations-btn, #manage-lines-btn, #diagram-toolbar button,
+    .modal-actions button, #lines-toggle-btn, #needs-pins-btn{
+      min-height:40px;
+    }
+    .line-row{padding:10px 0;}
+    .diagram-pin{min-width:16px; min-height:16px;}
+  }
+
+  #sync-status-pill{
+    position:fixed;
+    bottom:16px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:9999;
+    padding:8px 16px;
+    border-radius:999px;
+    font-size:13px;
+    font-weight:600;
+    box-shadow:0 2px 8px rgba(0,0,0,0.35);
+    pointer-events:none;
+  }
 </style>
 </head>
 <body>
@@ -771,12 +841,14 @@
     <div class="num" id="overall-num">0 / 0</div>
     <div class="lbl">stations visited</div>
   </div>
+  <button id="lines-toggle-btn" title="Show lines list">Lines</button>
 </header>
 
 <div class="layout">
   <div id="map"></div>
-  <div id="add-station-handle" title="Drag onto the map to add a new station at that location"><span class="dot"></span>Add station</div>
+  <div id="add-station-handle" title="Tap, then tap the map to add a new station there"><span class="dot"></span>Add station</div>
   <div id="tile-warning">Map tiles failed to load for this layer — try switching layers (top-right) or check your network/DNS filtering. Stations below still work even with a dark background.</div>
+  <div id="aside-backdrop"></div>
   <div id="station-panel">
     <div class="sname" id="sp-name"></div>
     <div class="slines" id="sp-lines"></div>
@@ -924,6 +996,265 @@
 
 <script src="/vendor/leaflet/leaflet.js"></script>
 <script>
+// --- PWA offline-first sync -------------------------------------------------
+//
+// Only attempted when running as an installed/standalone PWA. In a regular
+// browser tab (especially iOS Safari, which has no Background Sync API and
+// aggressively evicts IndexedDB/Cache Storage after ~7 days of inactivity for
+// non-installed sites) we don't queue anything or promise offline behavior —
+// a failed write just fails, exactly as before this feature existed.
+const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+// Service worker registration runs unconditionally (harmless in a browser
+// tab — worst case is a cache miss falling through to network — and it's
+// required groundwork for installability in the first place).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => console.error('SW registration failed', err));
+  });
+}
+
+// Client-side mirrors of app.py's slugify()/make_station_id() so newly
+// created cities/stations/pins get their id up front, on the client, before
+// the request is even sent. That's what makes offline creates replay-safe:
+// the same id is reused on retry, so the server-side create is a no-op the
+// second time instead of a duplicate.
+function slugify(text) {
+  const slug = (text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || 'city';
+}
+function makeStationId(name) {
+  const rand = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(16).slice(2)).replace(/-/g, '').slice(0, 6);
+  return slugify(name).slice(0, 40) + '-' + rand;
+}
+
+const nativeFetch = window.fetch.bind(window);
+let isOnlineGroundTruth = navigator.onLine;
+let syncTimerHandle = null;
+
+// --- IndexedDB write queue: one store, FIFO by auto-increment key ---------
+
+function openQueueDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('tube-tracker-offline', 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('writeQueue', { keyPath: 'qid', autoIncrement: true });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function enqueueWrite(record) {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('writeQueue', 'readwrite');
+    const req = tx.objectStore('writeQueue').add(record);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function listQueuedWrites() {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('writeQueue', 'readonly').objectStore('writeQueue').getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function countQueuedWrites() {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('writeQueue', 'readonly').objectStore('writeQueue').count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function dequeueWrite(qid) {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('writeQueue', 'readwrite');
+    tx.objectStore('writeQueue').delete(qid);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+// Manual escape hatch for devtools if the queue ever needs clearing by hand —
+// not called anywhere in normal app flow.
+window.__ttClearQueue = async function () {
+  const db = await openQueueDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('writeQueue', 'readwrite');
+    tx.objectStore('writeQueue').clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+// --- Fabricating an optimistic response for a queued write, so calling code
+// (pins.push(await res.json())-style) works unmodified whether the write went
+// through immediately or got queued. Everything else discards the response,
+// so any 2xx stub is fine for those.
+
+function buildSyntheticPayload(pathname, method, jsonBody) {
+  const body = jsonBody || {};
+  if (method === 'POST' && /^\/api\/cities$/.test(pathname)) {
+    return { id: body.id, name: body.name };
+  }
+  if (method === 'POST' && /^\/api\/cities\/[^/]+\/stations$/.test(pathname)) {
+    return { id: body.id, name: body.name, zone: body.zone || '', lat: body.lat ?? null, lon: body.lon ?? null, lines: body.lines || [] };
+  }
+  if (method === 'POST' && /^\/api\/cities\/[^/]+\/pins$/.test(pathname)) {
+    return { id: body.id, station_id: body.station_id, x_pct: body.x_pct, y_pct: body.y_pct, lines: body.lines || [] };
+  }
+  const visitedMatch = pathname.match(/^\/api\/cities\/[^/]+\/visited\/([^/]+)$/);
+  if (method === 'POST' && visitedMatch) {
+    const stationId = decodeURIComponent(visitedMatch[1]);
+    if (body.visited === false) return { station_id: stationId, visited: false };
+    const prior = visited[stationId];
+    return { station_id: stationId, visited: true, visited_at: (prior && prior.visited_at) || new Date().toISOString(), lines: (prior && prior.lines) || [] };
+  }
+  const visitedLineMatch = pathname.match(/^\/api\/cities\/[^/]+\/visited\/([^/]+)\/lines\/([^/]+)$/);
+  if (visitedLineMatch) {
+    const stationId = decodeURIComponent(visitedLineMatch[1]);
+    const line = decodeURIComponent(visitedLineMatch[2]);
+    const prior = (visited[stationId] && visited[stationId].lines) || [];
+    const lines = method === 'DELETE' ? prior.filter((l) => l !== line) : [...new Set([...prior, line])];
+    return { station_id: stationId, lines };
+  }
+  return { ok: true };
+}
+
+async function queueWrite(url, init) {
+  const method = ((init && init.method) || 'GET').toUpperCase();
+  const rawBody = init && init.body !== undefined ? init.body : null;
+  let bodyType = 'none', body = null;
+  if (typeof FormData !== 'undefined' && rawBody instanceof FormData) {
+    bodyType = 'formdata';
+    body = {};
+    for (const [k, v] of rawBody.entries()) body[k] = v; // Files/Blobs stored as-is — IndexedDB structured clone supports them
+  } else if (typeof rawBody === 'string') {
+    bodyType = 'json';
+    try { body = JSON.parse(rawBody); } catch (err) { body = null; }
+  }
+
+  await enqueueWrite({
+    url: url.pathname + url.search,
+    method, bodyType, body,
+    createdAt: new Date().toISOString(),
+    description: method + ' ' + url.pathname,
+  });
+  updateSyncStatus();
+
+  const payload = buildSyntheticPayload(url.pathname, method, bodyType === 'json' ? body : null);
+  return new Response(JSON.stringify(payload), { status: 200, headers: { 'Content-Type': 'application/json' } });
+}
+
+if (STANDALONE) {
+  window.fetch = async function patchedFetch(input, init) {
+    const urlStr = typeof input === 'string' ? input : (input && input.url) || '';
+    const url = new URL(urlStr, location.href);
+    const method = ((init && init.method) || 'GET').toUpperCase();
+    const isApiWrite = url.origin === location.origin && url.pathname.startsWith('/api/') && ['POST', 'PUT', 'DELETE'].includes(method);
+    if (!isApiWrite) return nativeFetch(input, init);
+    try {
+      const res = await nativeFetch(input, init); // resolved = server reached, even on 4xx/5xx — not queued
+      isOnlineGroundTruth = true;
+      updateSyncStatus();
+      return res;
+    } catch (networkErr) { // thrown = genuinely unreachable — queue it
+      isOnlineGroundTruth = false;
+      return queueWrite(url, init);
+    }
+  };
+}
+
+// --- Sync status pill: OFFLINE (red) / unsynced changes (yellow) / synced
+// (green, auto-hides after 5s). Only ever exists in the DOM when standalone.
+
+function renderSyncPill(state) {
+  let el = document.getElementById('sync-status-pill');
+  if (state === 'hidden') { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sync-status-pill';
+    document.body.appendChild(el);
+  }
+  const cfg = {
+    OFFLINE: { text: 'OFFLINE', bg: '#dc241f', fg: '#fff' },
+    UNSYNCED: { text: 'unsynced changes available', bg: '#e6b800', fg: '#1a1a1a' },
+    SYNCED: { text: 'synced', bg: '#00782A', fg: '#fff' },
+  }[state];
+  el.textContent = cfg.text;
+  el.style.background = cfg.bg;
+  el.style.color = cfg.fg;
+}
+
+async function updateSyncStatus(justSyncedFromBacklog) {
+  if (!STANDALONE) return;
+  if (syncTimerHandle) { clearTimeout(syncTimerHandle); syncTimerHandle = null; }
+  const pending = await countQueuedWrites();
+  if (!isOnlineGroundTruth) renderSyncPill('OFFLINE');
+  else if (pending > 0) renderSyncPill('UNSYNCED');
+  else if (justSyncedFromBacklog) {
+    renderSyncPill('SYNCED');
+    syncTimerHandle = setTimeout(() => renderSyncPill('hidden'), 5000);
+  } else renderSyncPill('hidden');
+}
+
+// --- Flushing the queue: replays in FIFO (qid) order using nativeFetch
+// directly, so replay never re-enters the patched fetch/re-queues itself.
+
+let flushInProgress = false;
+async function flushQueue() {
+  if (!STANDALONE || flushInProgress) return;
+  flushInProgress = true;
+  try {
+    const items = await listQueuedWrites();
+    for (const item of items) {
+      const init = { method: item.method };
+      if (item.bodyType === 'json') {
+        init.headers = { 'Content-Type': 'application/json' };
+        init.body = JSON.stringify(item.body);
+      } else if (item.bodyType === 'formdata') {
+        const fd = new FormData();
+        for (const [k, v] of Object.entries(item.body || {})) fd.append(k, v);
+        init.body = fd;
+      }
+      let res;
+      try {
+        res = await nativeFetch(item.url, init);
+      } catch (networkErr) {
+        isOnlineGroundTruth = false;
+        break; // still offline — stop here, leave remaining items queued for next attempt
+      }
+      isOnlineGroundTruth = true;
+      // A 409 on a queued create means our own earlier attempt already landed
+      // (ids are client-generated) — safe to drop, not a real conflict.
+      if (res.ok || res.status === 409) {
+        await dequeueWrite(item.qid);
+      } else {
+        console.error('Tube Tracker: queued write rejected, leaving it queued', item.description, res.status);
+        break; // don't spin on a genuinely bad request; leave it (and everything after it) queued
+      }
+    }
+  } finally {
+    flushInProgress = false;
+    const remaining = await countQueuedWrites();
+    updateSyncStatus(remaining === 0);
+  }
+}
+
+if (STANDALONE) {
+  window.addEventListener('online', () => { isOnlineGroundTruth = true; flushQueue(); });
+  window.addEventListener('offline', () => { isOnlineGroundTruth = false; updateSyncStatus(); });
+  if (navigator.onLine) flushQueue(); else updateSyncStatus();
+  // Ground-truth fallback for when online/offline events don't fire reliably
+  // (navigator.onLine itself is known to lie, e.g. captive portals) — cheap
+  // no-op whenever the queue is already empty.
+  setInterval(() => { countQueuedWrites().then((n) => { if (n > 0) flushQueue(); }); }, 30000);
+}
+// --- end PWA offline-first sync ---------------------------------------------
+
 let LINE_COLORS = {};
 let cities = [];
 let currentCityId = localStorage.getItem('tubeTrackerCity') || 'london';
@@ -1084,7 +1415,7 @@ document.getElementById('ca-save-btn').onclick = async () => {
   const name = document.getElementById('ca-name').value.trim();
   if (!name) return;
   const res = await fetch('/api/cities', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: slugify(name), name })
   });
   if (!res.ok) { alert('Could not create city — ' + (await res.text())); return; }
   const created = await res.json();
@@ -1151,7 +1482,7 @@ document.getElementById('fm-save-btn').onclick = async () => {
 
   const stationRes = await fetch(api('/stations'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, lines: [lineName] })
+    body: JSON.stringify({ id: makeStationId(name), name, lines: [lineName] })
   });
   const station = await stationRes.json();
   stations.push(station);
@@ -1159,7 +1490,7 @@ document.getElementById('fm-save-btn').onclick = async () => {
   const { x_pct, y_pct } = pendingFreeMarkerCoords;
   const pinRes = await fetch(api('/pins'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ station_id: station.id, x_pct, y_pct, lines: [lineName] })
+    body: JSON.stringify({ id: crypto.randomUUID(), station_id: station.id, x_pct, y_pct, lines: [lineName] })
   });
   pins.push(await pinRes.json());
 
@@ -1256,9 +1587,27 @@ document.getElementById('edit-title-btn').onclick = async () => {
   applyCityBranding();
 };
 
+// Eager offline prefetch: while online in standalone, warm the service
+// worker's cache for every OTHER city too (not just the one currently open),
+// so switching cities while offline still works. Fire-and-forget — these are
+// plain GETs the SW's own fetch handler caches as a side effect; nothing here
+// needs to await them or touch app state.
+function prefetchCityForOffline(cityId) {
+  const base = '/api/cities/' + encodeURIComponent(cityId);
+  const urls = [base + '/lines', base + '/stations', base + '/visited', base + '/pins', base + '/diagram/image', base + '/logo/image'];
+  for (const url of urls) fetch(url).catch(() => {});
+}
+function prefetchOtherCitiesForOffline() {
+  if (!STANDALONE || !navigator.onLine) return;
+  for (const c of cities) {
+    if (c.id !== currentCityId) prefetchCityForOffline(c.id);
+  }
+}
+
 async function load() {
   await loadCities();
   await loadCityData();
+  prefetchOtherCitiesForOffline();
 }
 
 // --- Real-map markers ---
@@ -1357,7 +1706,10 @@ async function deletePin(pinId) {
 }
 
 async function toggleVisited(id) {
-  const res = await fetch(api('/visited/' + encodeURIComponent(id)), { method: 'POST' });
+  const target = !visited[id];
+  const res = await fetch(api('/visited/' + encodeURIComponent(id)), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visited: target })
+  });
   const data = await res.json();
   if (data.visited) {
     visited[id] = { visited_at: data.visited_at, lines: data.lines || [] };
@@ -1469,6 +1821,7 @@ let currentView = 'map';
 
 function switchView(view) {
   currentView = view;
+  disarmPlacement();
   document.getElementById('btn-view-map').classList.toggle('active', view === 'map');
   document.getElementById('btn-view-diagram').classList.toggle('active', view === 'diagram');
   document.getElementById('map').classList.toggle('hidden', view !== 'map');
@@ -1476,45 +1829,66 @@ function switchView(view) {
   document.getElementById('add-station-handle').style.display = view === 'map' ? 'flex' : 'none';
   document.getElementById('station-panel').classList.remove('visible');
   if (view === 'map') setTimeout(() => map.invalidateSize(), 50);
+  if (view === 'diagram' && !diagramFitted) setTimeout(fitDiagramToWindow, 0);
 }
 document.getElementById('btn-view-map').onclick = () => switchView('map');
 document.getElementById('btn-view-diagram').onclick = () => switchView('diagram');
 
+// --- Placement: tap a handle to arm it, then tap the map/diagram to place.
+// Replaces the old drag-a-handle gesture, which was awkward on touch (long
+// drag path from toolbar to target, finger occluding the drop point).
+
+let placementArmed = null; // 'station' | 'pin' | 'marker' | null
+
+function setPlacementArmed(type) {
+  placementArmed = placementArmed === type ? null : type;
+  updatePlacementUI();
+}
+function disarmPlacement() {
+  if (!placementArmed) return;
+  placementArmed = null;
+  updatePlacementUI();
+}
+function updatePlacementUI() {
+  const stationHandle = document.getElementById('add-station-handle');
+  const pinHandle = document.getElementById('add-pin-handle');
+  const markerHandle = document.getElementById('free-marker-handle');
+  if (stationHandle) stationHandle.classList.toggle('armed', placementArmed === 'station');
+  if (pinHandle) pinHandle.classList.toggle('armed', placementArmed === 'pin');
+  if (markerHandle) markerHandle.classList.toggle('armed', placementArmed === 'marker');
+  document.getElementById('map').classList.toggle('placing', placementArmed === 'station');
+  const canvas = document.getElementById('diagram-canvas');
+  if (canvas) canvas.classList.toggle('placing', placementArmed === 'pin' || placementArmed === 'marker');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (placementArmed) disarmPlacement();
+  else if (calibratingStation) stopCalibrating();
+  else if (document.querySelector('aside').classList.contains('open')) setAsideOpen(false);
+});
+
 function initAddStationHandle() {
   const handle = document.getElementById('add-station-handle');
   if (!handle) return;
-  handle.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    handle.setPointerCapture(e.pointerId);
-    const ghost = document.createElement('div');
-    ghost.className = 'pin-ghost';
-    ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
-    document.body.appendChild(ghost);
-
-    const onMove = (ev) => {
-      if (ev.pointerId !== e.pointerId) return;
-      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
-    };
-    const onUp = (ev) => {
-      if (ev.pointerId !== e.pointerId) return;
-      handle.removeEventListener('pointermove', onMove);
-      handle.removeEventListener('pointerup', onUp);
-      handle.releasePointerCapture(e.pointerId);
-      ghost.remove();
-
-      const mapEl = document.getElementById('map');
-      const dropTarget = document.elementFromPoint(ev.clientX, ev.clientY);
-      const droppedOnMap = mapEl && dropTarget && mapEl.contains(dropTarget);
-      if (!droppedOnMap) return;
-
-      const latlng = map.mouseEventToLatLng(ev);
-      openStationEditModal(null, { lat: latlng.lat, lon: latlng.lng });
-    };
-    handle.addEventListener('pointermove', onMove);
-    handle.addEventListener('pointerup', onUp);
+  handle.addEventListener('click', () => setPlacementArmed('station'));
+  map.on('click', (e) => {
+    if (placementArmed !== 'station') return;
+    disarmPlacement();
+    openStationEditModal(null, { lat: e.latlng.lat, lon: e.latlng.lng });
   });
 }
 initAddStationHandle();
+
+// --- Mobile: lines sidebar becomes an off-canvas drawer ---
+
+function setAsideOpen(open) {
+  document.querySelector('aside').classList.toggle('open', open);
+  document.getElementById('aside-backdrop').classList.toggle('visible', open);
+}
+document.getElementById('lines-toggle-btn').addEventListener('click', () => {
+  setAsideOpen(!document.querySelector('aside').classList.contains('open'));
+});
+document.getElementById('aside-backdrop').addEventListener('click', () => setAsideOpen(false));
 
 // --- Diagram view: upload, pins, pan, add-pin handle ---
 
@@ -1526,6 +1900,7 @@ let calibrationPhase = null; // 'select-lines' | 'placing'
 function startCalibrating(s) {
   const uncovered = getUncoveredLines(s);
   if (!uncovered.length) return;
+  disarmPlacement();
   calibratingStation = s;
   if (uncovered.length === 1) {
     calibratingLines = [uncovered[0]];
@@ -1550,7 +1925,7 @@ async function placeCalibrationPin(x_pct, y_pct) {
   if (!calibratingStation || calibrationPhase !== 'placing' || !calibratingLines.length) return;
   const res = await fetch(api('/pins'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ station_id: calibratingStation.id, x_pct, y_pct, lines: calibratingLines })
+    body: JSON.stringify({ id: crypto.randomUUID(), station_id: calibratingStation.id, x_pct, y_pct, lines: calibratingLines })
   });
   const newPin = await res.json();
   pins.push(newPin);
@@ -1611,7 +1986,7 @@ function refreshCalibrationBanner() {
   } else {
     chipsEl.style.display = 'none';
     document.getElementById('calibration-banner-text').textContent =
-      'Placing "' + calibratingStation.name + '" (' + calibratingLines.join(', ') + ') — drag the pin onto the map';
+      'Placing "' + calibratingStation.name + '" (' + calibratingLines.join(', ') + ') — tap the map to place';
   }
 }
 
@@ -1639,7 +2014,7 @@ function renderDiagramView() {
   }
   container.innerHTML = `
     <div id="diagram-toolbar">
-      <span>Drag to pan · scroll to zoom · drag the pin onto a spot · click a placed pin to mark visited</span>
+      <span>Drag/swipe to pan · pinch or scroll to zoom · tap a handle below then tap the map to place · tap a placed pin to mark visited</span>
       <input type="file" id="diagram-file-input" accept="image/png,image/jpeg,image/webp" style="display:none" />
       <button id="diagram-replace-btn">Replace image</button>
       <div id="calibration-banner"><span id="calibration-banner-text"></span><div id="calibration-line-chips"></div><button id="calibration-cancel-btn">✕</button></div>
@@ -1647,8 +2022,8 @@ function renderDiagramView() {
         <button id="needs-pins-btn">Needs pins<span class="badge" id="needs-pins-badge" style="display:none"></span></button>
         <div id="needs-pins-dropdown"></div>
       </div>
-      <div id="add-pin-handle" title="Drag onto the map to add a station"><span class="dot"></span>Add pin</div>
-      <div id="free-marker-handle" title="Drag onto the map to add a custom point (Uber Boat, cable car, anything off-network)"><span class="dot"></span>Free marker</div>
+      <div id="add-pin-handle" title="Tap, then tap the map to add a station pin"><span class="dot"></span>Add pin</div>
+      <div id="free-marker-handle" title="Tap, then tap the map to add a custom point (Uber Boat, cable car, anything off-network)"><span class="dot"></span>Free marker</div>
       <div id="pin-size-control">
         Pin size
         <input type="range" id="pin-size-slider" min="0.003" max="0.06" step="0.001" />
@@ -1724,95 +2099,138 @@ async function handleDiagramFile(e) {
 let diagramFitScale = 1;
 let diagramZoom = 1;
 
+// Pan with one finger/mouse, pinch-to-zoom with two, and treat a finger-down
+// + finger-up with negligible movement as a tap (which places a pin/marker
+// when placement is armed or a calibration is in progress).
+const TAP_MOVE_THRESHOLD = 6; // px
+const diagramPointers = new Map(); // pointerId -> {x, y}
+let diagramGesture = null; // {mode:'pan', pointerId, startX, startY, scrollLeft, scrollTop, moved} | {mode:'pinch', startDist, startZoom, midX, midY}
+
 function onCanvasPointerDown(e) {
   if (e.button !== 0) return;
   if (e.target.closest('.diagram-pin')) return;
   e.preventDefault();
   const canvas = document.getElementById('diagram-canvas');
-  const scrollEl = document.getElementById('diagram-scroll');
-  canvas.setPointerCapture(e.pointerId);
-  diagramDragState = {
-    pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
-    scrollLeft: scrollEl.scrollLeft, scrollTop: scrollEl.scrollTop
-  };
-  canvas.classList.add('dragging');
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* capture is best-effort */ }
+  diagramPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (diagramPointers.size === 1) {
+    const scrollEl = document.getElementById('diagram-scroll');
+    diagramGesture = {
+      mode: 'pan', pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
+      scrollLeft: scrollEl.scrollLeft, scrollTop: scrollEl.scrollTop, moved: false
+    };
+    canvas.classList.add('dragging');
+  } else if (diagramPointers.size === 2) {
+    beginDiagramPinch();
+  }
   canvas.addEventListener('pointermove', onCanvasPointerMove);
   canvas.addEventListener('pointerup', onCanvasPointerUp);
   canvas.addEventListener('pointercancel', onCanvasPointerUp);
 }
-let diagramDragState = null;
-function onCanvasPointerMove(e) {
-  if (!diagramDragState || e.pointerId !== diagramDragState.pointerId) return;
-  const dx = e.clientX - diagramDragState.startX;
-  const dy = e.clientY - diagramDragState.startY;
-  const scrollEl = document.getElementById('diagram-scroll');
-  scrollEl.scrollLeft = diagramDragState.scrollLeft - dx;
-  scrollEl.scrollTop = diagramDragState.scrollTop - dy;
-}
-function onCanvasPointerUp(e) {
-  if (!diagramDragState || e.pointerId !== diagramDragState.pointerId) return;
+
+function beginDiagramPinch() {
   const canvas = document.getElementById('diagram-canvas');
-  canvas.releasePointerCapture(e.pointerId);
-  canvas.removeEventListener('pointermove', onCanvasPointerMove);
-  canvas.removeEventListener('pointerup', onCanvasPointerUp);
-  canvas.removeEventListener('pointercancel', onCanvasPointerUp);
+  const scrollEl = document.getElementById('diagram-scroll');
+  const [a, b] = [...diagramPointers.values()];
+  const rect = scrollEl.getBoundingClientRect();
+  diagramGesture = {
+    mode: 'pinch',
+    startDist: Math.hypot(a.x - b.x, a.y - b.y),
+    startZoom: diagramZoom,
+    midX: (a.x + b.x) / 2 - rect.left,
+    midY: (a.y + b.y) / 2 - rect.top
+  };
   canvas.classList.remove('dragging');
-  diagramDragState = null;
 }
 
-function initDragHandle(handleId, onDrop) {
-  const handle = document.getElementById(handleId);
-  if (!handle) return;
-  handle.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    handle.setPointerCapture(e.pointerId);
-    const ghost = document.createElement('div');
-    ghost.className = 'pin-ghost';
-    ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
-    document.body.appendChild(ghost);
+function onCanvasPointerMove(e) {
+  if (!diagramPointers.has(e.pointerId)) return;
+  diagramPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!diagramGesture) return;
 
-    const onMove = (ev) => {
-      if (ev.pointerId !== e.pointerId) return;
-      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+  if (diagramGesture.mode === 'pan' && e.pointerId === diagramGesture.pointerId) {
+    const dx = e.clientX - diagramGesture.startX;
+    const dy = e.clientY - diagramGesture.startY;
+    if (Math.abs(dx) > TAP_MOVE_THRESHOLD || Math.abs(dy) > TAP_MOVE_THRESHOLD) diagramGesture.moved = true;
+    const scrollEl = document.getElementById('diagram-scroll');
+    scrollEl.scrollLeft = diagramGesture.scrollLeft - dx;
+    scrollEl.scrollTop = diagramGesture.scrollTop - dy;
+  } else if (diagramGesture.mode === 'pinch') {
+    const [a, b] = [...diagramPointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    if (diagramGesture.startDist > 0) {
+      zoomDiagramAtPoint(diagramGesture.midX, diagramGesture.midY, diagramGesture.startZoom * (dist / diagramGesture.startDist));
+    }
+  }
+}
+
+function onCanvasPointerUp(e) {
+  const canvas = document.getElementById('diagram-canvas');
+  const wasTap = !!diagramGesture && diagramGesture.mode === 'pan' &&
+    diagramGesture.pointerId === e.pointerId && !diagramGesture.moved && diagramPointers.size === 1;
+  try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+  diagramPointers.delete(e.pointerId);
+
+  if (diagramPointers.size === 0) {
+    canvas.removeEventListener('pointermove', onCanvasPointerMove);
+    canvas.removeEventListener('pointerup', onCanvasPointerUp);
+    canvas.removeEventListener('pointercancel', onCanvasPointerUp);
+    canvas.classList.remove('dragging');
+    diagramGesture = null;
+  } else if (diagramPointers.size === 1) {
+    // Dropped from two fingers to one — resume panning from here rather than
+    // jumping back to the stale single-pointer start position.
+    const [[remainingId, remaining]] = diagramPointers;
+    const scrollEl = document.getElementById('diagram-scroll');
+    diagramGesture = {
+      mode: 'pan', pointerId: remainingId, startX: remaining.x, startY: remaining.y,
+      scrollLeft: scrollEl.scrollLeft, scrollTop: scrollEl.scrollTop, moved: true
     };
-    const onUp = (ev) => {
-      if (ev.pointerId !== e.pointerId) return;
-      handle.removeEventListener('pointermove', onMove);
-      handle.removeEventListener('pointerup', onUp);
-      handle.releasePointerCapture(e.pointerId);
-      ghost.remove();
+    canvas.classList.add('dragging');
+  }
 
-      const img = document.getElementById('diagram-img');
-      const dropTarget = document.elementFromPoint(ev.clientX, ev.clientY);
-      const droppedOnImage = img && dropTarget && (dropTarget === img || !!dropTarget.closest('#diagram-canvas'));
-      if (!droppedOnImage) return;
+  if (wasTap) handleDiagramTap(e);
+}
 
-      const rect = img.getBoundingClientRect();
-      const x_pct = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
-      const y_pct = Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height));
-      onDrop(x_pct, y_pct);
-    };
-    handle.addEventListener('pointermove', onMove);
-    handle.addEventListener('pointerup', onUp);
-  });
+function handleDiagramTap(e) {
+  const img = document.getElementById('diagram-img');
+  if (!img) return;
+  const rect = img.getBoundingClientRect();
+  const insideImage = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+  if (!insideImage) return;
+  const x_pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  const y_pct = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+
+  if (calibratingStation && calibrationPhase === 'placing') {
+    placeCalibrationPin(x_pct, y_pct);
+  } else if (placementArmed === 'pin') {
+    disarmPlacement();
+    openPinModal(x_pct, y_pct);
+  } else if (placementArmed === 'marker') {
+    disarmPlacement();
+    openFreeMarkerModal(x_pct, y_pct);
+  }
 }
 
 function initAddPinHandle() {
-  initDragHandle('add-pin-handle', (x_pct, y_pct) => {
-    if (calibratingStation) placeCalibrationPin(x_pct, y_pct);
-    else openPinModal(x_pct, y_pct);
-  });
-  initDragHandle('free-marker-handle', (x_pct, y_pct) => openFreeMarkerModal(x_pct, y_pct));
+  document.getElementById('add-pin-handle').addEventListener('click', () => setPlacementArmed('pin'));
+  document.getElementById('free-marker-handle').addEventListener('click', () => setPlacementArmed('marker'));
 }
 
+let diagramFitted = false;
 function fitDiagramToWindow() {
   const img = document.getElementById('diagram-img');
   const scrollEl = document.getElementById('diagram-scroll');
   if (!img || !img.naturalWidth || !scrollEl) return;
   const availW = scrollEl.clientWidth - 24;
   const availH = scrollEl.clientHeight - 24;
+  // diagram-view is display:none until the user opens the Diagram tab, so a fit
+  // attempted while hidden sees a 0-size container — skip it and retry once visible.
+  if (availW <= 0 || availH <= 0) return;
   diagramFitScale = Math.min(availW / img.naturalWidth, availH / img.naturalHeight, 1);
   diagramZoom = 1;
+  diagramFitted = true;
   applyDiagramScale();
 }
 function setDiagramZoom(z) {
@@ -1820,34 +2238,37 @@ function setDiagramZoom(z) {
   applyDiagramScale();
 }
 
-function onCanvasWheel(e) {
-  e.preventDefault();
+// Zoom to newZoom while keeping the image content under (cursorX, cursorY)
+// — coordinates relative to #diagram-scroll's viewport — fixed in place, so
+// zooming feels anchored to the pointer/pinch-midpoint instead of drifting.
+function zoomDiagramAtPoint(cursorX, cursorY, newZoom) {
   const scrollEl = document.getElementById('diagram-scroll');
   const img = document.getElementById('diagram-img');
   if (!scrollEl || !img) return;
 
-  const rect = scrollEl.getBoundingClientRect();
-  const cursorX = e.clientX - rect.left; // cursor position within the visible viewport
-  const cursorY = e.clientY - rect.top;
-
   const beforeWidth = img.getBoundingClientRect().width;
   const beforeHeight = img.getBoundingClientRect().height;
-
-  // Which fraction of the image is currently under the cursor — this is what
-  // we'll keep fixed under the cursor after the zoom, so zooming feels
-  // anchored to the pointer instead of drifting toward the corner.
   const fracX = (scrollEl.scrollLeft + cursorX) / beforeWidth;
   const fracY = (scrollEl.scrollTop + cursorY) / beforeHeight;
 
-  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-  diagramZoom = Math.max(0.1, Math.min(diagramZoom * factor, 8));
+  diagramZoom = Math.max(0.1, Math.min(newZoom, 8));
   applyDiagramScale();
 
   const afterWidth = img.getBoundingClientRect().width;
   const afterHeight = img.getBoundingClientRect().height;
-
   scrollEl.scrollLeft = fracX * afterWidth - cursorX;
   scrollEl.scrollTop = fracY * afterHeight - cursorY;
+}
+
+function onCanvasWheel(e) {
+  e.preventDefault();
+  const scrollEl = document.getElementById('diagram-scroll');
+  if (!scrollEl) return;
+  const rect = scrollEl.getBoundingClientRect();
+  const cursorX = e.clientX - rect.left;
+  const cursorY = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  zoomDiagramAtPoint(cursorX, cursorY, diagramZoom * factor);
 }
 function applyDiagramScale() {
   const img = document.getElementById('diagram-img');
@@ -1974,7 +2395,7 @@ document.getElementById('pin-modal-confirm').onclick = async () => {
 
   const res = await fetch(api('/pins'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ station_id: stationId, x_pct, y_pct, lines: linesArr })
+    body: JSON.stringify({ id: crypto.randomUUID(), station_id: stationId, x_pct, y_pct, lines: linesArr })
   });
   const newPin = await res.json();
   pins.push(newPin);
@@ -2148,7 +2569,8 @@ document.getElementById('se-save-btn').onclick = async () => {
     });
   } else {
     await fetch(api('/stations'), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: makeStationId(name), ...body })
     });
   }
   document.getElementById('station-edit-backdrop').classList.remove('visible');

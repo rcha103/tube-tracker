@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.0.0
+
+**Mobile & touch**
+- Redesigned diagram map interaction for touch: tap-to-arm, tap-to-place
+  station/pin placement instead of drag-and-drop
+- Multi-touch pinch-to-zoom and pan on the diagram map
+- Off-canvas slide-out drawer for line management on small screens
+- Responsive layout pass across the app for phone-sized viewports
+
+**Offline & installability**
+- Installable as a PWA (Add to Home Screen on iOS/Android, desktop
+  install) with app icons and a standalone launch experience
+- Offline-first sync when installed as a standalone PWA: every change
+  (cities, stations, visited status, pins, line colours, diagram/logo
+  images) is queued locally and synced automatically when a connection
+  is available
+- Eager background caching of every city's diagram image and data so
+  switching cities while offline still works
+- Floating sync status indicator (offline / unsynced changes / synced)
+- Regular browser tab usage is unchanged and does not attempt offline
+  behaviour, avoiding iOS Safari's storage-eviction pitfalls
+
+**Fixes**
+- Diagram map no longer opens zoomed in on first load; it now
+  correctly fits the window
+
 ## 1.0.0
 
 Initial public release.

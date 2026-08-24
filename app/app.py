@@ -657,26 +657,42 @@ def list_visited(city_id):
 def toggle_visited(city_id, station_id):
     conn = get_db()
     require_city(conn, city_id)
+    body = request.get_json(silent=True) or {}
     existing = conn.execute(
-        "SELECT station_id FROM visited WHERE city_id = ? AND station_id = ?", (city_id, station_id)
+        "SELECT station_id, visited_at FROM visited WHERE city_id = ? AND station_id = ?", (city_id, station_id)
     ).fetchone()
 
-    if existing:
+    # An explicit "visited" flag makes this an idempotent upsert-or-delete instead
+    # of a toggle, so a queued offline write can be safely replayed after a prior
+    # unacknowledged success without flipping the state an extra time. Omitting
+    # it keeps the original toggle behavior for backward compatibility.
+    target = body.get("visited")
+    if target is None:
+        target = existing is None
+
+    if not target:
         conn.execute("DELETE FROM visited WHERE city_id = ? AND station_id = ?", (city_id, station_id))
         conn.execute("DELETE FROM visited_lines WHERE city_id = ? AND station_id = ?", (city_id, station_id))
         conn.commit()
         conn.close()
         return jsonify({"station_id": station_id, "visited": False})
 
-    body = request.get_json(silent=True) or {}
-    visited_at = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        "INSERT INTO visited (station_id, city_id, visited_at, note) VALUES (?, ?, ?, ?)",
-        (station_id, city_id, visited_at, body.get("note")),
-    )
-    conn.commit()
+    if existing:
+        visited_at = existing["visited_at"]
+    else:
+        visited_at = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO visited (station_id, city_id, visited_at, note) VALUES (?, ?, ?, ?)",
+            (station_id, city_id, visited_at, body.get("note")),
+        )
+        conn.commit()
+    lines = [
+        r["line"] for r in conn.execute(
+            "SELECT line FROM visited_lines WHERE city_id = ? AND station_id = ?", (city_id, station_id)
+        ).fetchall()
+    ]
     conn.close()
-    return jsonify({"station_id": station_id, "visited": True, "visited_at": visited_at, "lines": []})
+    return jsonify({"station_id": station_id, "visited": True, "visited_at": visited_at, "lines": lines})
 
 
 @app.route("/api/cities/<city_id>/visited/<station_id>/note", methods=["PUT"])
@@ -771,14 +787,21 @@ def create_pin(city_id):
 
     conn = get_db()
     require_city(conn, city_id)
-    pin_id = str(uuid.uuid4())
+    # Accept a client-supplied id (mirrors cities/stations) so an offline-queued
+    # create can be replayed with the same id and land as a safe no-op instead
+    # of a duplicate pin.
+    pin_id = body.get("id") or str(uuid.uuid4())
     conn.execute(
-        "INSERT INTO pins (id, station_id, city_id, x_pct, y_pct, lines) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO pins (id, station_id, city_id, x_pct, y_pct, lines) VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO NOTHING",
         (pin_id, station_id, city_id, x_pct, y_pct, lines_str),
     )
     conn.commit()
+    row = conn.execute(
+        "SELECT id, station_id, x_pct, y_pct, lines FROM pins WHERE id = ?", (pin_id,)
+    ).fetchone()
     conn.close()
-    return jsonify({"id": pin_id, "station_id": station_id, "x_pct": x_pct, "y_pct": y_pct, "lines": lines})
+    return jsonify(_pin_row_to_json(row))
 
 
 @app.route("/api/cities/<city_id>/pins/<pin_id>", methods=["PUT"])
