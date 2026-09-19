@@ -27,6 +27,9 @@ os.makedirs(LOGO_DIR, exist_ok=True)
 
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp"}
 
+APP_VERSION = "3.0.0"
+GITHUB_REPO = "rcha103/tube-tracker"
+
 app = Flask(__name__, static_folder="static", static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024  # 30MB, high-res maps can be big
 
@@ -272,6 +275,11 @@ def index():
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/version")
+def version_info():
+    return jsonify({"version": APP_VERSION, "repo": GITHUB_REPO})
 
 
 # --- Cities ---

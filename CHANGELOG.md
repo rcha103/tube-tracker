@@ -1,5 +1,40 @@
 # Changelog
 
+## 3.0.0
+
+**Mobile & touch**
+- Diagram pin/marker/calibration placement now uses a magnifier-assisted
+  precision drag on touch/pen: touch down shows a magnified loupe of
+  exactly what's under your finger, drag to fine-tune, release to
+  commit — no more mis-placed pins from fat-finger taps. Mouse keeps
+  the original instant click-to-place
+- The Add pin / Free marker handles are a proper two-way toggle: tap
+  again (even mid-drag) to cancel and freely pan/pinch-zoom the
+  diagram, tap again to re-arm
+- "Manage stations" and "Manage lines" are now desktop-only, reducing
+  header clutter on small screens
+- Pin size control moved to its own dedicated bar pinned to the bottom
+  of the screen on mobile (like a zoom control), instead of being
+  squeezed into the scrolling toolbar row
+
+**PWA**
+- Online/offline indicator is now persistent and always visible once
+  installed, instead of hiding when idle — it also actively checks
+  real connectivity every 5 seconds, so a dropped or restored
+  connection shows up immediately instead of only after your next
+  write attempt
+- Update-available notification: the header now shows the running
+  version next to the stations-visited counter, and flags + links to
+  the GitHub release notes when a newer version is out
+- Automated image publishing to GHCR on tagged releases, so installs
+  that auto-update (e.g. Watchtower) have a real registry image to
+  poll
+
+**Branding**
+- Replaced the default logo placeholder and PWA install icons — no
+  longer styled after the London Underground roundel, now a neutral
+  generic mark, since the app supports any city
+
 ## 2.0.0
 
 **Mobile & touch**

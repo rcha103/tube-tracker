@@ -20,8 +20,7 @@
     --line:#282e35;
     --text:#e9edf1;
     --text-dim:#8b96a3;
-    --accent:#dc241f; /* roundel red */
-    --accent-2:#0019a8; /* roundel blue */
+    --accent:#dc241f;
     --radius:10px;
   }
   *{box-sizing:border-box;}
@@ -63,20 +62,11 @@
     border-radius:50%;
   }
   #city-logo{width:100%;height:100%;object-fit:contain;}
-  .roundel{
+  .logo-placeholder-default{
     width:34px;height:34px;border-radius:50%;
-    border:5px solid var(--accent);
+    border:2px dashed var(--text-dim);
     background:transparent;
-    position:relative;
     flex-shrink:0;
-  }
-  .roundel::after{
-    content:"";
-    position:absolute;
-    left:-2px;right:-2px;top:50%;
-    height:6px;
-    margin-top:-3px;
-    background:var(--accent-2);
   }
   .app-title{
     font-size:16px;
@@ -117,6 +107,21 @@
     color:var(--text-dim);
     text-transform:uppercase;
     letter-spacing:0.6px;
+  }
+  #app-version-badge{
+    margin-left:10px;
+    font-size:11px;
+    color:var(--text-dim);
+    white-space:nowrap;
+    align-self:center;
+  }
+  #app-version-badge.update-available{
+    color:#0098D4;
+    font-weight:600;
+    cursor:pointer;
+  }
+  #app-version-badge.update-available:hover{
+    text-decoration:underline;
   }
   .layout{
     flex:1;
@@ -520,6 +525,38 @@
   }
   .diagram-pin.unvisited{opacity:0.55;}
 
+  #diagram-magnifier{
+    position:fixed;
+    border-radius:50%;
+    border:3px solid #fff;
+    box-shadow:0 4px 16px rgba(0,0,0,0.5);
+    overflow:hidden;
+    pointer-events:none;
+    z-index:10000;
+    display:none;
+    background:#0a0c0e;
+  }
+  #diagram-magnifier .lens{
+    position:absolute;
+    inset:0;
+    background-repeat:no-repeat;
+  }
+  #diagram-magnifier .crosshair{
+    position:absolute;
+    top:50%; left:50%;
+    width:20px; height:20px;
+    margin:-10px 0 0 -10px;
+    pointer-events:none;
+  }
+  #diagram-magnifier .crosshair::before, #diagram-magnifier .crosshair::after{
+    content:"";
+    position:absolute;
+    background:#fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,0.8);
+  }
+  #diagram-magnifier .crosshair::before{ left:9px; top:0; width:2px; height:20px; }
+  #diagram-magnifier .crosshair::after{ top:9px; left:0; width:20px; height:2px; }
+
   #pin-size-control{
     display:flex;
     align-items:center;
@@ -759,6 +796,7 @@
   @media (max-width: 760px){
     header{flex-wrap:wrap; row-gap:8px; padding:10px 12px;}
     header .sub{display:none;}
+    #manage-stations-btn, #manage-lines-btn{display:none;}
     #lines-toggle-btn{
       display:block;
       background:var(--panel-2);
@@ -782,6 +820,30 @@
     #station-panel{left:12px; right:12px; width:auto;}
     #diagram-toolbar{overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap;}
     #diagram-toolbar > span{display:none;}
+
+    /* Pin size gets its own dedicated bar pinned to the bottom (like Word's
+       zoom control) instead of being squeezed into the scrolling toolbar
+       row alongside every other button. */
+    #diagram-scroll{bottom:52px;}
+    #pin-size-control{
+      position:fixed;
+      left:0; right:0; bottom:0;
+      z-index:900;
+      height:52px;
+      box-sizing:border-box;
+      padding:8px 16px;
+      gap:12px;
+      background:rgba(21,25,29,0.97);
+      backdrop-filter:blur(4px);
+      border-top:1px solid var(--line);
+      font-size:13px;
+    }
+    #pin-size-control input[type="range"]{
+      flex:1;
+      width:auto;
+      height:28px;
+    }
+    #sync-status-pill{bottom:64px;}
   }
 
   /* --- Touch input (phones/tablets, regardless of screen width) --- */
@@ -815,6 +877,7 @@
     box-shadow:0 2px 8px rgba(0,0,0,0.35);
     pointer-events:none;
   }
+
 </style>
 </head>
 <body>
@@ -822,7 +885,7 @@
 <header>
   <div id="logo-container" title="Click to upload/change this city's logo">
     <img id="city-logo" alt="" style="display:none" />
-    <div id="logo-placeholder" class="roundel"></div>
+    <div id="logo-placeholder" class="logo-placeholder-default"></div>
   </div>
   <input type="file" id="logo-file-input" accept="image/png,image/webp,image/jpeg" style="display:none" />
   <div>
@@ -841,6 +904,7 @@
     <div class="num" id="overall-num">0 / 0</div>
     <div class="lbl">stations visited</div>
   </div>
+  <span id="app-version-badge" title="Tube Tracker version"></span>
   <button id="lines-toggle-btn" title="Show lines list">Lines</button>
 </header>
 
@@ -1169,11 +1233,12 @@ if (STANDALONE) {
 }
 
 // --- Sync status pill: OFFLINE (red) / unsynced changes (yellow) / synced
-// (green, auto-hides after 5s). Only ever exists in the DOM when standalone.
+// (green, briefly) / online (green, persistent baseline). Always visible
+// once standalone — deliberately never hides, so connectivity is visible
+// at a glance at all times, not just when something needs attention.
 
 function renderSyncPill(state) {
   let el = document.getElementById('sync-status-pill');
-  if (state === 'hidden') { if (el) el.remove(); return; }
   if (!el) {
     el = document.createElement('div');
     el.id = 'sync-status-pill';
@@ -1183,6 +1248,7 @@ function renderSyncPill(state) {
     OFFLINE: { text: 'OFFLINE', bg: '#dc241f', fg: '#fff' },
     UNSYNCED: { text: 'unsynced changes available', bg: '#e6b800', fg: '#1a1a1a' },
     SYNCED: { text: 'synced', bg: '#00782A', fg: '#fff' },
+    ONLINE: { text: 'online', bg: '#00782A', fg: '#fff' },
   }[state];
   el.textContent = cfg.text;
   el.style.background = cfg.bg;
@@ -1197,8 +1263,10 @@ async function updateSyncStatus(justSyncedFromBacklog) {
   else if (pending > 0) renderSyncPill('UNSYNCED');
   else if (justSyncedFromBacklog) {
     renderSyncPill('SYNCED');
-    syncTimerHandle = setTimeout(() => renderSyncPill('hidden'), 5000);
-  } else renderSyncPill('hidden');
+    // Settle into the persistent "online" baseline rather than hiding —
+    // the pill never disappears once standalone.
+    syncTimerHandle = setTimeout(() => renderSyncPill('ONLINE'), 5000);
+  } else renderSyncPill('ONLINE');
 }
 
 // --- Flushing the queue: replays in FIFO (qid) order using nativeFetch
@@ -1244,16 +1312,87 @@ async function flushQueue() {
   }
 }
 
+// Active connectivity probe: a real network round-trip (not navigator.onLine,
+// which is known to lie — e.g. captive portals report "online" with no
+// actual route out) so the pill reflects the device's actual connectivity
+// within CONNECTIVITY_CHECK_MS of it changing, not just when the user
+// happens to trigger a write.
+const CONNECTIVITY_CHECK_MS = 5000;
+async function checkConnectivity() {
+  if (!STANDALONE) return;
+  const wasOffline = !isOnlineGroundTruth;
+  try {
+    await nativeFetch('/health', { cache: 'no-store' });
+    isOnlineGroundTruth = true;
+    if (wasOffline) flushQueue(); // just reconnected — replay anything queued
+    else updateSyncStatus();
+  } catch (err) {
+    isOnlineGroundTruth = false;
+    updateSyncStatus();
+  }
+}
+
 if (STANDALONE) {
-  window.addEventListener('online', () => { isOnlineGroundTruth = true; flushQueue(); });
+  window.addEventListener('online', checkConnectivity);
   window.addEventListener('offline', () => { isOnlineGroundTruth = false; updateSyncStatus(); });
-  if (navigator.onLine) flushQueue(); else updateSyncStatus();
-  // Ground-truth fallback for when online/offline events don't fire reliably
-  // (navigator.onLine itself is known to lie, e.g. captive portals) — cheap
-  // no-op whenever the queue is already empty.
-  setInterval(() => { countQueuedWrites().then((n) => { if (n > 0) flushQueue(); }); }, 30000);
+  checkConnectivity();
+  setInterval(checkConnectivity, CONNECTIVITY_CHECK_MS);
 }
 // --- end PWA offline-first sync ---------------------------------------------
+
+// --- Version badge (header, beside the stations-visited counter): always
+// shows the running app's version. On load, also compares it against the
+// latest GitHub release; if a newer one exists the badge switches to that
+// tag, turns into a link, and opens the release notes on click. Best-effort
+// only — silently leaves the badge showing the current version if offline
+// or if GitHub's API is unreachable/rate-limited.
+
+function parseVersionParts(v) {
+  return String(v || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+}
+function isNewerVersion(latest, current) {
+  const a = parseVersionParts(latest), b = parseVersionParts(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0, y = b[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+let latestReleaseUrl = null;
+document.getElementById('app-version-badge').onclick = () => {
+  if (latestReleaseUrl) window.open(latestReleaseUrl, '_blank', 'noopener');
+};
+
+function setVersionBadge(text, updateAvailable) {
+  const el = document.getElementById('app-version-badge');
+  el.textContent = text;
+  el.classList.toggle('update-available', !!updateAvailable);
+  el.title = updateAvailable ? 'Update available — click for release notes' : 'Tube Tracker version';
+}
+
+async function checkForUpdate() {
+  let currentVersion, repo;
+  try {
+    const verRes = await fetch('/api/version');
+    if (!verRes.ok) return;
+    ({ version: currentVersion, repo } = await verRes.json());
+    setVersionBadge('v' + currentVersion, false);
+  } catch (err) {
+    return; // backend unreachable — leave badge blank
+  }
+  try {
+    const ghRes = await fetch('https://api.github.com/repos/' + repo + '/releases/latest');
+    if (!ghRes.ok) return;
+    const release = await ghRes.json();
+    if (release.tag_name && isNewerVersion(release.tag_name, currentVersion)) {
+      latestReleaseUrl = release.html_url;
+      setVersionBadge(release.tag_name + ' available', true);
+    }
+  } catch (err) {
+    // offline, GitHub unreachable, rate-limited, etc. — current version stays shown
+  }
+}
 
 let LINE_COLORS = {};
 let cities = [];
@@ -1842,11 +1981,13 @@ let placementArmed = null; // 'station' | 'pin' | 'marker' | null
 
 function setPlacementArmed(type) {
   placementArmed = placementArmed === type ? null : type;
+  cancelDiagramPlaceGesture();
   updatePlacementUI();
 }
 function disarmPlacement() {
   if (!placementArmed) return;
   placementArmed = null;
+  cancelDiagramPlaceGesture();
   updatePlacementUI();
 }
 function updatePlacementUI() {
@@ -1986,7 +2127,7 @@ function refreshCalibrationBanner() {
   } else {
     chipsEl.style.display = 'none';
     document.getElementById('calibration-banner-text').textContent =
-      'Placing "' + calibratingStation.name + '" (' + calibratingLines.join(', ') + ') — tap the map to place';
+      'Placing "' + calibratingStation.name + '" (' + calibratingLines.join(', ') + ') — touch and drag on the map to fine-tune, release to place';
   }
 }
 
@@ -2014,7 +2155,7 @@ function renderDiagramView() {
   }
   container.innerHTML = `
     <div id="diagram-toolbar">
-      <span>Drag/swipe to pan · pinch or scroll to zoom · tap a handle below then tap the map to place · tap a placed pin to mark visited</span>
+      <span>Drag/swipe to pan · pinch or scroll to zoom · tap a handle below then touch and drag on the map to fine-tune with the magnifier, release to place — tap the handle again to cancel and pan/zoom freely · tap a placed pin to mark visited</span>
       <input type="file" id="diagram-file-input" accept="image/png,image/jpeg,image/webp" style="display:none" />
       <button id="diagram-replace-btn">Replace image</button>
       <div id="calibration-banner"><span id="calibration-banner-text"></span><div id="calibration-line-chips"></div><button id="calibration-cancel-btn">✕</button></div>
@@ -2022,8 +2163,8 @@ function renderDiagramView() {
         <button id="needs-pins-btn">Needs pins<span class="badge" id="needs-pins-badge" style="display:none"></span></button>
         <div id="needs-pins-dropdown"></div>
       </div>
-      <div id="add-pin-handle" title="Tap, then tap the map to add a station pin"><span class="dot"></span>Add pin</div>
-      <div id="free-marker-handle" title="Tap, then tap the map to add a custom point (Uber Boat, cable car, anything off-network)"><span class="dot"></span>Free marker</div>
+      <div id="add-pin-handle" title="Tap to arm, then touch and drag on the map to place with the magnifier. Tap again to cancel and pan/zoom freely."><span class="dot"></span>Add pin</div>
+      <div id="free-marker-handle" title="Tap to arm, then touch and drag on the map to place a custom point (Uber Boat, cable car, anything off-network) with the magnifier. Tap again to cancel and pan/zoom freely."><span class="dot"></span>Free marker</div>
       <div id="pin-size-control">
         Pin size
         <input type="range" id="pin-size-slider" min="0.003" max="0.06" step="0.001" />
@@ -2104,7 +2245,94 @@ let diagramZoom = 1;
 // when placement is armed or a calibration is in progress).
 const TAP_MOVE_THRESHOLD = 6; // px
 const diagramPointers = new Map(); // pointerId -> {x, y}
-let diagramGesture = null; // {mode:'pan', pointerId, startX, startY, scrollLeft, scrollTop, moved} | {mode:'pinch', startDist, startZoom, midX, midY}
+let diagramGesture = null; // {mode:'pan', pointerId, startX, startY, scrollLeft, scrollTop, moved} | {mode:'pinch', startDist, startZoom, midX, midY} | {mode:'place', pointerId}
+
+function diagramPlacementActive() {
+  return placementArmed === 'pin' || placementArmed === 'marker' ||
+    (!!calibratingStation && calibrationPhase === 'placing');
+}
+
+// --- Placement magnifier: touch/pen fingers are far less precise than a
+// mouse cursor, so while a placement is armed (pin/marker/calibration), a
+// single touch/pen drag on the canvas doesn't place immediately — it shows a
+// magnified loupe (offset above the finger, since the finger itself covers
+// the target point) that tracks the drag, and only commits the pin on
+// release. Mouse keeps the original instant click-to-place, since a mouse
+// cursor is already pixel-precise.
+const MAGNIFIER_SIZE = 120; // px, must match the inline width/height set below
+const MAGNIFIER_ZOOM = 2.5;
+
+function getDiagramMagnifierEl() {
+  let el = document.getElementById('diagram-magnifier');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'diagram-magnifier';
+    el.innerHTML = '<div class="lens"></div><div class="crosshair"></div>';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function updateDiagramMagnifier(clientX, clientY, x_pct, y_pct) {
+  const img = document.getElementById('diagram-img');
+  if (!img) return;
+  const el = getDiagramMagnifierEl();
+  const size = MAGNIFIER_SIZE;
+  // Centered above the finger so the loupe itself isn't hidden underneath it;
+  // clamped so it stays fully on-screen near the top/side edges.
+  const offsetY = 90;
+  const left = Math.max(4, Math.min(clientX - size / 2, window.innerWidth - size - 4));
+  const top = Math.max(4, clientY - offsetY - size);
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+  el.style.width = size + 'px';
+  el.style.height = size + 'px';
+  el.style.display = 'block';
+
+  const rect = img.getBoundingClientRect();
+  const bgWidth = rect.width * MAGNIFIER_ZOOM;
+  const bgHeight = rect.height * MAGNIFIER_ZOOM;
+  const lens = el.querySelector('.lens');
+  lens.style.backgroundImage = 'url("' + img.src + '")';
+  lens.style.backgroundSize = bgWidth + 'px ' + bgHeight + 'px';
+  lens.style.backgroundPosition = (-(x_pct * bgWidth - size / 2)) + 'px ' + (-(y_pct * bgHeight - size / 2)) + 'px';
+}
+
+function updateDiagramMagnifierFromEvent(e) {
+  const img = document.getElementById('diagram-img');
+  if (!img) return;
+  const rect = img.getBoundingClientRect();
+  const x_pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+  const y_pct = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+  updateDiagramMagnifier(e.clientX, e.clientY, x_pct, y_pct);
+}
+
+function hideDiagramMagnifier() {
+  const el = document.getElementById('diagram-magnifier');
+  if (el) el.style.display = 'none';
+}
+
+// Arming/disarming a placement (tapping the Add pin/Free marker handle
+// again, or Escape) is also how a user backs out of an in-progress
+// magnifier drag to get plain pan/pinch-zoom back — without this, an
+// active drag would keep intercepting touches until the finger lifts
+// (committing a placement) even though the button already says "off".
+function cancelDiagramPlaceGesture() {
+  if (!diagramGesture || diagramGesture.mode !== 'place') return;
+  hideDiagramMagnifier();
+  const canvas = document.getElementById('diagram-canvas');
+  if (canvas) {
+    try { canvas.releasePointerCapture(diagramGesture.pointerId); } catch (err) { /* already released */ }
+  }
+  diagramPointers.delete(diagramGesture.pointerId);
+  diagramGesture = null;
+  if (canvas && diagramPointers.size === 0) {
+    canvas.removeEventListener('pointermove', onCanvasPointerMove);
+    canvas.removeEventListener('pointerup', onCanvasPointerUp);
+    canvas.removeEventListener('pointercancel', onCanvasPointerUp);
+    canvas.classList.remove('dragging');
+  }
+}
 
 function onCanvasPointerDown(e) {
   if (e.button !== 0) return;
@@ -2115,13 +2343,18 @@ function onCanvasPointerDown(e) {
   diagramPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
   if (diagramPointers.size === 1) {
-    const scrollEl = document.getElementById('diagram-scroll');
-    diagramGesture = {
-      mode: 'pan', pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
-      scrollLeft: scrollEl.scrollLeft, scrollTop: scrollEl.scrollTop, moved: false
-    };
-    canvas.classList.add('dragging');
-  } else if (diagramPointers.size === 2) {
+    if ((e.pointerType === 'touch' || e.pointerType === 'pen') && diagramPlacementActive()) {
+      diagramGesture = { mode: 'place', pointerId: e.pointerId };
+      updateDiagramMagnifierFromEvent(e);
+    } else {
+      const scrollEl = document.getElementById('diagram-scroll');
+      diagramGesture = {
+        mode: 'pan', pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
+        scrollLeft: scrollEl.scrollLeft, scrollTop: scrollEl.scrollTop, moved: false
+      };
+      canvas.classList.add('dragging');
+    }
+  } else if (diagramPointers.size === 2 && (!diagramGesture || diagramGesture.mode !== 'place')) {
     beginDiagramPinch();
   }
   canvas.addEventListener('pointermove', onCanvasPointerMove);
@@ -2149,7 +2382,9 @@ function onCanvasPointerMove(e) {
   diagramPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (!diagramGesture) return;
 
-  if (diagramGesture.mode === 'pan' && e.pointerId === diagramGesture.pointerId) {
+  if (diagramGesture.mode === 'place' && e.pointerId === diagramGesture.pointerId) {
+    updateDiagramMagnifierFromEvent(e);
+  } else if (diagramGesture.mode === 'pan' && e.pointerId === diagramGesture.pointerId) {
     const dx = e.clientX - diagramGesture.startX;
     const dy = e.clientY - diagramGesture.startY;
     if (Math.abs(dx) > TAP_MOVE_THRESHOLD || Math.abs(dy) > TAP_MOVE_THRESHOLD) diagramGesture.moved = true;
@@ -2169,6 +2404,8 @@ function onCanvasPointerUp(e) {
   const canvas = document.getElementById('diagram-canvas');
   const wasTap = !!diagramGesture && diagramGesture.mode === 'pan' &&
     diagramGesture.pointerId === e.pointerId && !diagramGesture.moved && diagramPointers.size === 1;
+  const wasPlace = !!diagramGesture && diagramGesture.mode === 'place' && diagramGesture.pointerId === e.pointerId;
+  if (wasPlace) hideDiagramMagnifier();
   try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
   diagramPointers.delete(e.pointerId);
 
@@ -2178,9 +2415,12 @@ function onCanvasPointerUp(e) {
     canvas.removeEventListener('pointercancel', onCanvasPointerUp);
     canvas.classList.remove('dragging');
     diagramGesture = null;
-  } else if (diagramPointers.size === 1) {
+  } else if (diagramPointers.size === 1 && (!diagramGesture || diagramGesture.mode !== 'place')) {
     // Dropped from two fingers to one — resume panning from here rather than
-    // jumping back to the stale single-pointer start position.
+    // jumping back to the stale single-pointer start position. Skipped while
+    // an active placement drag is still in progress under a different
+    // pointer id — an extra finger touching mid-drag is ignored entirely,
+    // not treated as a pinch-to-pan transition.
     const [[remainingId, remaining]] = diagramPointers;
     const scrollEl = document.getElementById('diagram-scroll');
     diagramGesture = {
@@ -2190,7 +2430,10 @@ function onCanvasPointerUp(e) {
     canvas.classList.add('dragging');
   }
 
-  if (wasTap) handleDiagramTap(e);
+  // A placement drag commits on release regardless of movement (dragging to
+  // fine-tune the spot under the magnifier is the whole point); a plain tap
+  // only counts if the finger/cursor never moved.
+  if (wasTap || wasPlace) handleDiagramTap(e);
 }
 
 function handleDiagramTap(e) {
@@ -2674,6 +2917,7 @@ document.getElementById('le-save-btn').onclick = async () => {
 };
 
 load();
+checkForUpdate();
 </script>
 </body>
 </html>
