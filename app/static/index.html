@@ -818,8 +818,25 @@
     }
     aside.open{transform:translateX(0);}
     #station-panel{left:12px; right:12px; width:auto;}
-    #diagram-toolbar{overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap;}
+    /* backdrop-filter must be off here: it makes the toolbar the containing
+       block for position:fixed descendants, which pinned #pin-size-control
+       to the toolbar's own 41px box (covering Add pin / Free marker)
+       instead of the bottom of the viewport. */
+    #diagram-toolbar{overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap; backdrop-filter:none;}
     #diagram-toolbar > span{display:none;}
+    /* The horizontally-scrolling toolbar clips anything that overflows its
+       41px row — which hid the Needs-pins dropdown and the (wrapping)
+       calibration banner's line chips / Continue button entirely. Lift both
+       out as fixed overlays above the pin-size bar and sync pill. */
+    #needs-pins-dropdown, #calibration-banner{
+      position:fixed;
+      left:8px; right:8px;
+      bottom:104px;
+      top:auto;
+      width:auto;
+      z-index:950;
+    }
+    #calibration-banner{padding:10px 12px; font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,0.4);}
 
     /* Pin size gets its own dedicated bar pinned to the bottom (like Word's
        zoom control) instead of being squeezed into the scrolling toolbar
@@ -2091,6 +2108,15 @@ function stopCalibrating() {
   refreshCalibrationBanner();
 }
 
+// Mouse places on a plain click — a mouse press-and-drag pans the diagram
+// instead (only touch/pen drags drive the magnifier), so telling a mouse
+// user to "drag" left them panning forever without ever placing anything.
+function placementHint() {
+  return window.matchMedia('(pointer: fine)').matches
+    ? 'click the map to place'
+    : 'touch and drag on the map to fine-tune, release to place';
+}
+
 function refreshCalibrationBanner() {
   const banner = document.getElementById('calibration-banner');
   const chipsEl = document.getElementById('calibration-line-chips');
@@ -2127,7 +2153,7 @@ function refreshCalibrationBanner() {
   } else {
     chipsEl.style.display = 'none';
     document.getElementById('calibration-banner-text').textContent =
-      'Placing "' + calibratingStation.name + '" (' + calibratingLines.join(', ') + ') — touch and drag on the map to fine-tune, release to place';
+      'Placing "' + calibratingStation.name + '" (' + calibratingLines.join(', ') + ') — ' + placementHint();
   }
 }
 
@@ -2155,7 +2181,7 @@ function renderDiagramView() {
   }
   container.innerHTML = `
     <div id="diagram-toolbar">
-      <span>Drag/swipe to pan · pinch or scroll to zoom · tap a handle below then touch and drag on the map to fine-tune with the magnifier, release to place — tap the handle again to cancel and pan/zoom freely · tap a placed pin to mark visited</span>
+      <span>Drag/swipe to pan · pinch or scroll to zoom · click a handle below then click the map to place (on touch: drag to fine-tune with the magnifier, release to place) — click the handle again to cancel · click a placed pin to mark visited</span>
       <input type="file" id="diagram-file-input" accept="image/png,image/jpeg,image/webp" style="display:none" />
       <button id="diagram-replace-btn">Replace image</button>
       <div id="calibration-banner"><span id="calibration-banner-text"></span><div id="calibration-line-chips"></div><button id="calibration-cancel-btn">✕</button></div>
@@ -2163,8 +2189,8 @@ function renderDiagramView() {
         <button id="needs-pins-btn">Needs pins<span class="badge" id="needs-pins-badge" style="display:none"></span></button>
         <div id="needs-pins-dropdown"></div>
       </div>
-      <div id="add-pin-handle" title="Tap to arm, then touch and drag on the map to place with the magnifier. Tap again to cancel and pan/zoom freely."><span class="dot"></span>Add pin</div>
-      <div id="free-marker-handle" title="Tap to arm, then touch and drag on the map to place a custom point (Uber Boat, cable car, anything off-network) with the magnifier. Tap again to cancel and pan/zoom freely."><span class="dot"></span>Free marker</div>
+      <div id="add-pin-handle" title="Click to arm, then click the map to place (on touch: drag to fine-tune with the magnifier, release to place). Click again to cancel."><span class="dot"></span>Add pin</div>
+      <div id="free-marker-handle" title="Click to arm, then click the map to place a custom point (Uber Boat, cable car, anything off-network). On touch: drag to fine-tune with the magnifier, release to place. Click again to cancel."><span class="dot"></span>Free marker</div>
       <div id="pin-size-control">
         Pin size
         <input type="range" id="pin-size-slider" min="0.003" max="0.06" step="0.001" />
@@ -2627,8 +2653,17 @@ function renderModalLineChips() {
 }
 document.getElementById('pin-station-search').addEventListener('input', (e) => renderStationSearchResults(e.target.value));
 document.getElementById('pin-modal-cancel').onclick = closePinModal;
+// Only close on a press that both started and ended on the backdrop. A touch
+// tap on the diagram opens this modal from pointerup, and the browser's
+// follow-up synthesized click is hit-tested *after* that — landing on the
+// freshly shown backdrop and closing the modal instantly.
+let pinBackdropPressStarted = false;
+document.getElementById('pin-modal-backdrop').addEventListener('pointerdown', (e) => {
+  pinBackdropPressStarted = e.target.id === 'pin-modal-backdrop';
+});
 document.getElementById('pin-modal-backdrop').addEventListener('click', (e) => {
-  if (e.target.id === 'pin-modal-backdrop') closePinModal();
+  if (e.target.id === 'pin-modal-backdrop' && pinBackdropPressStarted) closePinModal();
+  pinBackdropPressStarted = false;
 });
 document.getElementById('pin-modal-confirm').onclick = async () => {
   if (!modalSelectedStation || !pendingPinCoords || modalSelectedLines.size === 0) return;

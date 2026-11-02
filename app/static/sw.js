@@ -10,7 +10,7 @@
 // Bump CACHE_VERSION whenever the precache list or a caching strategy changes
 // — activate() deletes any cache not in ALL_CACHES, so a version bump
 // auto-retires everything from the previous version.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const SHELL_CACHE = `tt-shell-${CACHE_VERSION}`;
 const API_CACHE = `tt-api-${CACHE_VERSION}`;
 const IMG_CACHE = `tt-img-${CACHE_VERSION}`;

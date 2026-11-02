@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.0.1
+
+**Bug fixes**
+- Mobile: the Add pin and Free marker buttons were hidden underneath the
+  pin size bar, which was meant to sit at the bottom of the screen but
+  was showing over the diagram toolbar instead — pins and markers could
+  not be added at all on phones (or in desktop windows 760px wide or
+  narrower)
+- Touch screens: tapping the diagram to add a pin opened the station
+  picker and then immediately closed it again, so the pin could never be
+  saved
+- Mobile: the Needs pins list and the line picker / Continue button in
+  the placing banner were cut off by the toolbar and couldn't be used;
+  they now appear as a panel just above the pin size bar
+- Desktop: the placing banner and tooltips told mouse users to "touch
+  and drag" to place a pin, but a mouse drag pans the map — they now
+  say to click the map (touch keeps the drag-to-fine-tune wording)
+
+**PWA**
+- Service worker cache version bumped so installed copies pick up the
+  new version immediately instead of serving the previous cached page
+
 ## 3.0.0
 
 **Mobile & touch**
