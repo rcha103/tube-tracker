@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.0.2
+
+**Bug fixes**
+- Saving a pin (Add pin, Free marker, or placing a station from Needs
+  pins) failed silently when the app was opened over plain HTTP, e.g. via
+  a LAN or Tailscale IP address — browsers only provide the
+  `crypto.randomUUID()` function used to generate pin ids on HTTPS or
+  localhost. The app now falls back to an equivalent id generator that
+  works everywhere
+
+**Known limitation**
+- Offline mode and installing as an app still require HTTPS (browsers
+  only run service workers on secure pages), and iOS Safari with HTTPS-Only
+  enabled refuses plain HTTP addresses entirely. For Tailscale setups,
+  `tailscale serve` provides a private HTTPS address
+
 ## 3.0.1
 
 **Bug fixes**

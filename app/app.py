@@ -27,7 +27,7 @@ os.makedirs(LOGO_DIR, exist_ok=True)
 
 ALLOWED_IMAGE_EXT = {"png", "jpg", "jpeg", "webp"}
 
-APP_VERSION = "3.0.1"
+APP_VERSION = "3.0.2"
 GITHUB_REPO = "rcha103/tube-tracker"
 
 app = Flask(__name__, static_folder="static", static_url_path="")

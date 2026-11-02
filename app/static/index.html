@@ -1104,8 +1104,20 @@ function slugify(text) {
   const slug = (text || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return slug || 'city';
 }
+// crypto.randomUUID() only exists in secure contexts (HTTPS or localhost) —
+// over plain HTTP on a LAN/Tailscale IP it's undefined and every pin save
+// threw. crypto.getRandomValues() is available everywhere, so build an RFC
+// 4122 v4 UUID from it as the fallback.
+function newUuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
 function makeStationId(name) {
-  const rand = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(16).slice(2)).replace(/-/g, '').slice(0, 6);
+  const rand = newUuid().replace(/-/g, '').slice(0, 6);
   return slugify(name).slice(0, 40) + '-' + rand;
 }
 
@@ -1646,7 +1658,7 @@ document.getElementById('fm-save-btn').onclick = async () => {
   const { x_pct, y_pct } = pendingFreeMarkerCoords;
   const pinRes = await fetch(api('/pins'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: crypto.randomUUID(), station_id: station.id, x_pct, y_pct, lines: [lineName] })
+    body: JSON.stringify({ id: newUuid(), station_id: station.id, x_pct, y_pct, lines: [lineName] })
   });
   pins.push(await pinRes.json());
 
@@ -2083,7 +2095,7 @@ async function placeCalibrationPin(x_pct, y_pct) {
   if (!calibratingStation || calibrationPhase !== 'placing' || !calibratingLines.length) return;
   const res = await fetch(api('/pins'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: crypto.randomUUID(), station_id: calibratingStation.id, x_pct, y_pct, lines: calibratingLines })
+    body: JSON.stringify({ id: newUuid(), station_id: calibratingStation.id, x_pct, y_pct, lines: calibratingLines })
   });
   const newPin = await res.json();
   pins.push(newPin);
@@ -2673,7 +2685,7 @@ document.getElementById('pin-modal-confirm').onclick = async () => {
 
   const res = await fetch(api('/pins'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: crypto.randomUUID(), station_id: stationId, x_pct, y_pct, lines: linesArr })
+    body: JSON.stringify({ id: newUuid(), station_id: stationId, x_pct, y_pct, lines: linesArr })
   });
   const newPin = await res.json();
   pins.push(newPin);
